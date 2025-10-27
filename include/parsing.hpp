@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 
 using namespace std;
 
@@ -20,6 +21,9 @@ struct RealData {
     vector<double> H_k;
     vector<int> loading_prepared;
     vector<int> owning;
+    map<string, vector<string>> reservoir_to_product;
+    map<string, set<vector<string>>> truck_to_variants;
+    vector<int> is_critical;
 };
 
 

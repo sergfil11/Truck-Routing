@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <numeric>
 #include <cmath>
+#include <assert.h>
 
 using namespace std;
 
@@ -201,8 +202,44 @@ map<pair<int, int>, int> global_numeration(const vector<int>& lengths){
     return num;
 }
 
-// Возвращает заполнения для выбранного грузовика и станций (в глобальной нумерации) 
-vector<vector<string>> get_fillings(const Truck& truck, const vector<Station>& chosen_stations, const map<pair<int, int>, int>& gl_num){
+
+// "разворачивает" карту из вида station_n: vector<product_name> в reservoir_global_n: product_name
+map<int, string> global_product_mapping(const map<string, vector<string>>& reservoir_to_product) {
+    map<int, string> global_mapping;
+    int global_index = 0;
+    
+    for (const auto& [reservoir, products] : reservoir_to_product) {
+        for (const auto& product : products) {
+            global_mapping[global_index] = product;
+            global_index++;
+        }
+    }
+    
+    return global_mapping;
+}
+
+
+// переводит заполнение вида {'', '34', '', '1'} в названия продуктов в бензовозе {'none', 'diesel, 'none', 'petrol', 'petrol'}
+vector<string> convert_compartments(int compartments_count, const vector<string>& fill, const map<int, string>& res_to_product) {
+    // Создаем результат размера compartments_count, заполненный "none"
+    vector<string> result(compartments_count, "none");
+    
+    for (int i = 0; i < fill.size(); i++) {
+            if (!fill[i].empty()) {
+            for (char c : fill[i]) {                        // если строка непуста, обрабатываем каждый символ (отсек) в строке
+                if (isdigit(c)) {
+                    int key = c - '0';
+                    result[key] = res_to_product.at(i);     // отсек key заполнен продуктом для резервуара i
+                }
+            }
+        }
+    }
+    return result;
+}
+
+
+// Возвращает заполнения для выбранного грузовика и станций (в глобальной нумерации)
+vector<vector<string>> get_fillings(const Truck& truck, const vector<Station>& chosen_stations, const map<pair<int, int>, int>& gl_num) {
     vector<double> mins, maxs;
     for (Station st : chosen_stations){                                 // добавляем резервуары из станций, аналог extend
         mins.insert(mins.end(), st.demand.begin(), st.demand.end());

@@ -48,6 +48,10 @@ set<vector<int>> boolify_reservoirs(const vector<vector<string>>& fillings);
 // переводит номер станции и резервуара в глобальный номер резервуара
 map<pair<int, int>, int> global_numeration(const vector<int>& lengths);
 
+map<int, string> global_product_mapping(const map<string, vector<string>>& reservoir_to_product);
+
+vector<string> convert_compartments(int compartments_count, const vector<string>& fill, const map<int, string>& res_to_product);
+
 double roundN(double val, int n);
 
 // Main
@@ -123,3 +127,4 @@ struct KeyEqual {
         return a.first == b.first && a.second == b.second;
     }
 };
+

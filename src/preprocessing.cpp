@@ -57,8 +57,8 @@ gurobi_preprocessing(
     vector<double>& docs_fill,
     vector<double>& H_k,
     vector<int>& loading_prepared,
-    const map<int, vector<string>>& reservoir_to_product,
-    const map<int, set<tuple<string>>>& truck_to_variants
+    const map<string, vector<string>>& reservoir_to_product,
+    const map<string, set<vector<string>>>& truck_to_variants
   ){
 
   // значения по умолчанию
@@ -138,16 +138,18 @@ gurobi_preprocessing(
   // глобальная нумерация выбранных резервуаров
   map<pair<int, int>, int> gl_num = global_numeration(lengths);
 
-  auto t1 = chrono::system_clock::now();  
+  // глобальная нумерация видов топлива в резервуарах
+  map<int, string> gl_res_to_product = global_product_mapping(reservoir_to_product);
   
+  auto t1 = chrono::system_clock::now();  
    
- set<pair<int, vector<string>>> result = {};
+  set<pair<int, vector<string>>> result = {};
 
  // вектор локальных результатов для каждого треда
- vector<set<pair<int, vector<string>>>> local_results(trucks.size());
+  vector<set<pair<int, vector<string>>>> local_results(trucks.size());
 
- #pragma omp parallel for
- for (int idx = 0; idx < trucks.size(); ++idx) {
+  #pragma omp parallel for
+  for (int idx = 0; idx < trucks.size(); ++idx) {
       const vector<double>& truck = trucks[idx];
       // станцию и матрицу времени нужно обрезать в случае ограничений a_ik
 
@@ -192,14 +194,72 @@ gurobi_preprocessing(
       for (int r = 1; r < R1+1; r++) {
           set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
           
-          // print(f'Маршрутов для бензовоза {idx}: {len(val)}')
-          for (vector<string> elem : val){
-              local_set.insert({idx, elem});
-              // print(elem)
+          // нужно проверить, можно ли эти заполнения использовать для текущего бензовоза, для этого:
+          // 1. Для каждого заполнения берём номера используемых резервуаров в глобальной нумерации
+          //    А затем конвертируем их в используемые виды топлива
+          // 2. Берём доступные схемы загрузки бензовоза и проверяем, есть ли схема загрузки с такими видами топлива среди доступных
+          // 3. Если есть, то берём заполнение и добавляем его в результат
+
+          const set<vector<string>>& allowed_schemes = truck_to_variants.at(to_string(idx));
+          //cout << "Количество доступных схем загрузки для бензовоза " << idx << ": " << allowed_schemes.size() << endl;
+
+          for (const vector<string>& filling : val) {
+              vector<string> converted_filling = convert_compartments(truck.size(), filling, gl_res_to_product);    // по заполнению строим схему загрузки
+              if (allowed_schemes.find(converted_filling) != allowed_schemes.end()) {                               // если она доступна, добавляем заполнение в результат
+                  local_set.insert({idx, filling});
+              }
           }
+
+          // TODO: правильнее не первый попавшийся индекс брать, а тот, который пустой в БОЛЬШЕМ числе схем для этого бензовоза
+          // Рассмотрели варианты с заполнением всего бензовоза, а теперь попробуем реализовать схему с пропуском отсека
+          // энивей, пока что мы пропускаем не больше одного отсека (и всегда пропускаем один и тот же по номеру)
+          bool empty_comp_gen = false;
+          int comp_n = -1;
+          for (vector<string> scheme : allowed_schemes) {
+            for (int i = 0; i < scheme.size(); ++i) {
+              if (scheme[i].empty()) {
+                empty_comp_gen = true;
+                comp_n = i;
+                break;
+              }
+            }
+          }
+         
+          if (empty_comp_gen) {
+            vector<double> truck_cut = truck;              // создаём копию
+            truck_cut.erase(truck_cut.begin() + comp_n);   // удаляем i-ый отсек
+          
+            set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck_cut), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
+            
+            for (const vector<string>& filling : val) {
+              vector<string> converted_filling = convert_compartments(truck_cut.size(), filling, gl_res_to_product);    // по заполнению строим схему загрузки
+
+              // теперь нужно в пропущенный отсек схемы загрузки поставить '', то есть пропуск, чтобы соответствовать схеме
+              converted_filling.insert(converted_filling.begin() + comp_n, "");
+
+              if (allowed_schemes.find(converted_filling) != allowed_schemes.end()) {        // если она доступна, добавляем заполнение в результат
+                  local_set.insert({idx, filling});
+              }
+            }
+
+          }
+
+
+
+
+
+          // NOTE: Версия без схем загрузки
+          // for (vector<string> elem : val){
+          //     local_set.insert({idx, elem});
+          //     // print(elem)
+          // }
+
+          
+          // print(f'Маршрутов для бензовоза {idx}: {len(val)}')
       }
       local_results[idx] = move(local_set);
   }
+
   // объединяем результаты всех нитей
   for (const auto& s : local_results) {
     result.insert(s.begin(), s.end());
@@ -208,6 +268,8 @@ gurobi_preprocessing(
   auto t2 = chrono::system_clock::now();
   cout << "Время вычисления маршрутов:" << roundN(chrono::duration<double>(t2 - t1).count(), 3) << " сек." << endl;
   cout << "Всего маршрутов:"  << result.size() << endl;
+
+
 
 
   // заполнение резервуаров (в глобальной нумерации) бензовозами на маршрутах

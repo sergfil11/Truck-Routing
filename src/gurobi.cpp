@@ -14,14 +14,15 @@ using namespace std;
 unique_ptr<GurobiCoveringResult> gurobi_covering(
     const map<int, vector<vector<int>>>& filling_on_route,  // маршруты
     const map<pair<int,int>, double>& sigma,                // время на маршрут
-    const vector<map<string, double>>& reservoirs,              // {min,max}
+    const vector<map<string, double>>& reservoirs,          // {min,max}
     int tank_count,
     int H,
     int K,
     int timelimit,
     const map<pair<int,int>, int>& gl_num,
     const vector<double>& H_k,
-    vector<int> owning
+    vector<int> owning,
+    const vector<int>& is_critical
 ) {
     auto env = make_unique<GRBEnv>(true);
     env->set(GRB_IntParam_OutputFlag, 0);
@@ -75,7 +76,7 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
 
     // Ограничения (4.2)–(4.5)
     for (int i = 0; i < tank_count; ++i) {
-        if (reservoirs[i].at("min") > 0.0) {
+        if (is_critical[i] == 1.0) {
             GRBLinExpr lhs = 0;
             for (int k = 0; k < K; ++k) {
                 if (filling_on_route.count(k) == 0) continue;
@@ -83,7 +84,7 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
                 for (int r = 0; r < (int)routes.size(); ++r) lhs += b[{i,k,r}] * result->g[{k,r}];
             }
             result->model->addConstr(lhs == 1, "Reservoir_" + to_string(i));
-        } else if (reservoirs[i].at("min") == 0.0) {
+        } else {
             GRBLinExpr lhs = 0;
             for (int k = 0; k < K; ++k) {
                 if (filling_on_route.count(k) == 0) continue;

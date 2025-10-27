@@ -1,4 +1,5 @@
 {
+  "todo-tree.regex.regex": "((TODO|FIXME|NOTE|BUG):)",
   "files.associations": {
     "optional": "cpp",
     "iostream": "cpp",

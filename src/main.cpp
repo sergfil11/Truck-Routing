@@ -317,17 +317,18 @@ int main() {
     vector<double> docs_fill = data.docs_fill;
     vector<double> H_k = data.H_k;
     vector<int> loading_prepared = data.loading_prepared;
-    // map<int, vector<string>> reservoir_to_product = data.reservoir_to_product;
-    // map<int, set<tuple<string>>> truck_to_variants = data.truck_to_variants;
+    map<string, vector<string>> reservoir_to_product = data.reservoir_to_product;
+    map<string, set<vector<string>>> truck_to_variants = data.truck_to_variants;
     vector<int> owning = data.owning;
-
+    vector<int> is_critical = data.is_critical;
 
     int R1 = 3;
     int R2 = 10;
     double_piped = vector<bool>(K, true);
     H_k = vector<double>(K, 720);
-    loading_prepared = vector<int>(K, 1);
-    
+    //loading_prepared = vector<int>(K, 1);
+
+
     tuple< 
     map<int, vector<vector<int>>>,
     map<pair<int, int>, double>,
@@ -348,9 +349,9 @@ int main() {
         daily_coefficient,
         docs_fill,
         H_k,
-        loading_prepared
-        // reservoir_to_product,
-        // truck_to_variants
+        loading_prepared,
+        reservoir_to_product,
+        truck_to_variants
     );
 
     // Распаковка результата
@@ -397,7 +398,8 @@ int main() {
         900,      // timelimit
         gl_num,
         H_k_out,
-        owning
+        owning,
+        is_critical
     );
     auto t4 = chrono::system_clock::now();
     cout << "Время работы Gurobi: " << roundN(chrono::duration<double>(t4 - t3).count(), 3) << " сек." << endl;

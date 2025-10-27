@@ -33,6 +33,6 @@ gurobi_preprocessing(
     vector<double>& docs_fill,
     vector<double>& H_k,
     vector<int>& loading_prepared,
-    const map<int, vector<string>>& reservoir_to_product = {},
-    const map<int, set<tuple<string>>>& truck_to_variants = {}
+    const map<string, vector<string>>& reservoir_to_product = {},
+    const map<string, set<vector<string>>>& truck_to_variants = {}
   );
