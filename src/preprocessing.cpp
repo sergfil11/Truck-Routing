@@ -39,6 +39,7 @@ tuple<
     int,
     map<pair<int, int>, int>, 
     map<pair<int, int>, vector<string>>,
+    vector<double>,
     vector<double>
     >
 gurobi_preprocessing(
@@ -72,12 +73,16 @@ gurobi_preprocessing(
       docs_fill = vector<double> (N, 2400);
   if (loading_prepared.empty())
       loading_prepared = vector<int> (K, 0);
+  
+  vector<double> filling_times(K, 0);
 
   // если загружен под сменщика, увеличиваем длину смены на время заполнения в депо
   for (int truck = 0; truck < K; ++truck) {
     if (loading_prepared[truck] == 1) {
-        int sum_truck = accumulate(trucks[truck].begin(), trucks[truck].end(), 0.0);
-        H_k[truck] += (sum_truck / 1000.0) * 3;
+        double sum_truck = accumulate(trucks[truck].begin(), trucks[truck].end(), 0.0);
+        double filling_time = (sum_truck / 1000.0) * 3;
+        H_k[truck] += filling_time;
+        filling_times[truck] = filling_time;
     }
   }
 
@@ -393,5 +398,5 @@ gurobi_preprocessing(
   cout << "Время вычисления длительностей:" << roundN(chrono::duration<double>(t2 - t1).count(), 3) << " сек." << endl;
 
 
-  return make_tuple(new_filling_on_route, new_sigma, reservoirs, tank_count, gl_num, new_log, H_k);
+  return make_tuple(new_filling_on_route, new_sigma, reservoirs, tank_count, gl_num, new_log, H_k, filling_times);
 }

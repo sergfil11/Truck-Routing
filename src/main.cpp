@@ -336,6 +336,7 @@ int main() {
     int,
     map<pair<int, int>, int>, 
     map<pair<int, int>, vector<string>>,
+    vector<double>,
     vector<double>
     > result = gurobi_preprocessing(
         N, H, K,
@@ -362,6 +363,7 @@ int main() {
     auto& gl_num           = get<4>(result);
     auto& log              = get<5>(result);
     auto& H_k_out          = get<6>(result);
+    auto& filling_times    = get<7>(result);
 
     cout << "=== Gurobi_preprocessing закончилось ===\n";
     
@@ -380,35 +382,54 @@ int main() {
     //     }
     // }
 
-    ofstream file("output.txt");
-    for (const auto& entry : sigma) {
-        file << "Truck, route: (" << entry.first.first << ", " << entry.first.second 
-            << "), Time: " << entry.second << endl;
-    }
-    file.close();
+    // ofstream file("output.txt");
+    // for (const auto& entry : sigma) {
+    //     file << "Truck, route: (" << entry.first.first << ", " << entry.first.second 
+    //         << "), Time: " << entry.second << endl;
+    // }
+    // file.close();
 
-    auto t3 = chrono::system_clock::now();
-    auto res = gurobi_covering(
-        filling_on_route,
-        sigma,
-        reservoirs,
-        tank_count,
-        720,      // H
-        K,
-        900,      // timelimit
-        gl_num,
-        H_k_out,
-        owning,
-        is_critical
-    );
-    auto t4 = chrono::system_clock::now();
-    cout << "Время работы Gurobi: " << roundN(chrono::duration<double>(t4 - t3).count(), 3) << " сек." << endl;
+    ofstream file("load_and_double_race.txt");
+    auto old_buf = cout.rdbuf(file.rdbuf());
+
+    for (int i = 0; i < 3; i++) {
+        int load_number = i;     // число бензовозов, после рейса заполняющихся под сменщика
+
+        for (int j = 0; j < 3; j++) {
+            int double_race_number = j;     // число бензовозов, делающих по 2 рейса
+
+            cout << "=== Начало работы Gurobi с параметрами load_number = " << load_number << ", double_race_number = " << double_race_number << " ===\n";
+            auto t3 = chrono::system_clock::now();
+            auto res = gurobi_covering(
+                filling_on_route,
+                sigma,
+                reservoirs,
+                tank_count,
+                720,      // H
+                K,
+                900,      // timelimit
+                gl_num,
+                H_k_out,
+                owning,
+                is_critical,
+                load_number,
+                double_race_number,
+                filling_times
+            );
+
+            auto t4 = chrono::system_clock::now();
+            cout << "Время работы Gurobi: " << roundN(chrono::duration<double>(t4 - t3).count(), 3) << " сек." << endl;
+
+            bool print_logs = false;
+            gurobi_results(*res->model, res->y, res->g, filling_on_route, gl_num, log, sigma, print_logs);
+        }        
+    }
+    cout.rdbuf(old_buf);
+    // gurobi_results(*res->model, res->y, res->g, filling_on_route, gl_num, log, sigma);
 
     // GRBModel& model = ;
     // auto& y = ;
     // auto& g = ;
-
-    gurobi_results(*res->model, res->y, res->g, filling_on_route, gl_num, log, sigma);
 
 
 

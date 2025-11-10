@@ -22,7 +22,10 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
     const map<pair<int,int>, int>& gl_num,
     const vector<double>& H_k,
     vector<int> owning,
-    const vector<int>& is_critical
+    const vector<int>& is_critical,
+    int load_number,
+    int double_race_number,
+    const vector<double>& filling_times
 ) {
     auto env = make_unique<GRBEnv>(true);
     env->set(GRB_IntParam_OutputFlag, 0);
@@ -104,13 +107,54 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
     }
 
     if (!H_k.empty()) {
+        if (load_number > 0) {                  // если некоторое число бензовозов хотим загрузить под сменщика
+             // создаём переменные
+            for (int k = 0; k < K; ++k) {      
+              result->l[k] = result->model->addVar(0.0, 1.0, 0.0, GRB_BINARY, "l_"+std::to_string(k));
+            }
+            // вычитаем время загрузки под сменщика
+            for (int k = 0; k < K; ++k) {       
+                if (filling_on_route.count(k) == 0) continue;
+                GRBLinExpr lhs = 0;
+                const auto& routes = filling_on_route.at(k);
+                for (int r = 0; r < (int)routes.size(); ++r) lhs += sigma.at({k,r}) * result->g[{k,r}];
+                result->model->addConstr(lhs <= (H_k[k] - result->l[k] * filling_times[k]), "Shift_" + to_string(k));
+            }
+            // проверяем, что загрузок необходимое число
+            GRBLinExpr lhs = 0;
+            for (int k = 0; k < K; ++k) lhs += result->l[k];
+            result->model->addConstr(lhs >= load_number, "load_number satisfied");
+            // загружаем под сменщика только используемые бензовозы
+            for (int k = 0; k < K; ++k) {
+              result->model->addConstr(result->y[k] >= result->l[k], "load_if_used" + to_string(k));
+            }
+        }
+        else {
+            for (int k = 0; k < K; ++k) {
+                if (filling_on_route.count(k) == 0) continue;
+                GRBLinExpr lhs = 0;
+                const auto& routes = filling_on_route.at(k);
+                for (int r = 0; r < (int)routes.size(); ++r) lhs += sigma.at({k,r}) * result->g[{k,r}];
+                result->model->addConstr(lhs <= H_k[k], "Shift_" + to_string(k));
+            } 
+        }
+    }
+
+    if (double_race_number > 0) { 
+        GRBLinExpr all_races_sum = 0;
         for (int k = 0; k < K; ++k) {
             if (filling_on_route.count(k) == 0) continue;
-            GRBLinExpr lhs = 0;
-            const auto& routes = filling_on_route.at(k);
-            for (int r = 0; r < (int)routes.size(); ++r) lhs += sigma.at({k,r}) * result->g[{k,r}];
-            result->model->addConstr(lhs <= H_k[k], "Shift_" + to_string(k));
+            for (int r = 0; r < (int)filling_on_route.at(k).size(); ++r) {
+                all_races_sum += result->g[{k,r}];
+            }
         }
+
+        GRBLinExpr used_trucks_sum = 0;
+        for (int k = 0; k < K; ++k) {
+            used_trucks_sum += result->y[k];
+        }
+        
+        result->model->addConstr(all_races_sum >= used_trucks_sum + double_race_number, "double_races"); 
     }
 
     result->model->optimize();
@@ -125,7 +169,8 @@ void gurobi_results(
     const map<int, vector<vector<int>>>& filling_on_route,   // грузовику -> список маршрутов -> список заполнений
     const map<pair<int,int>, int>& gl_num,                   // (станция, резервуар) -> глобальный номер
     const map<pair<int,int>, vector<string>>& log,           // (k,r) -> лог действий
-    const map<pair<int,int>, double>& sigma                     // (k,r) -> время маршрута
+    const map<pair<int,int>, double>& sigma,                  // (k,r) -> время маршрута
+    bool print_logs
 ) {
     int status = model.get(GRB_IntAttr_Status);
 
@@ -155,66 +200,68 @@ void gurobi_results(
         }
 
         // перебираем грузовики
-        for (const auto& [k, routes] : filling_on_route) {
-            if (y.at(k).get(GRB_DoubleAttr_X) > 0.5) {
-                cout << "Бензовоз " << (k+1) << " используется, выбранные маршруты:" << endl;
-                double total_time = 0.0;
+        if (print_logs == true) {
+            for (const auto& [k, routes] : filling_on_route) {
+                if (y.at(k).get(GRB_DoubleAttr_X) > 0.5) {
+                    cout << "Бензовоз " << (k+1) << " используется, выбранные маршруты:" << endl;
+                    double total_time = 0.0;
 
-                for (int r = 0; r < (int)routes.size(); ++r) {
-                    if (g.at({k,r}).get(GRB_DoubleAttr_X) > 0.5) {
-                        cout << "\n  Маршрут №" << r << endl;
+                    for (int r = 0; r < (int)routes.size(); ++r) {
+                        if (g.at({k,r}).get(GRB_DoubleAttr_X) > 0.5) {
+                            cout << "\n  Маршрут №" << r << endl;
 
-                        // все резервуары на маршруте
-                        vector<int> temp_res;
-                        for (int res_idx = 0; res_idx < (int)routes[r].size(); ++res_idx) {
-                            if (routes[r][res_idx] != 0) {
-                                temp_res.push_back(res_idx);
-                            }
-                        }
-
-                        // станции в маршруте
-                        vector<int> st_in_route;
-                        vector<pair<int,int>> res_in_local;
-                        for (int elem : temp_res) {
-                            auto key = reversed_gl[elem]; // (station, reservoir)
-                            st_in_route.push_back(key.first);
-                            res_in_local.push_back(key);
-                        }
-
-                        // сортировка и уникализация станций
-                        sort(st_in_route.begin(), st_in_route.end());
-                        st_in_route.erase(unique(st_in_route.begin(), st_in_route.end()), st_in_route.end());
-
-                        // сортировка резервуаров
-                        sort(res_in_local.begin(), res_in_local.end());
-
-                        for (int s : st_in_route) {
-                            vector<int> res_in_local_curr;
-                            for (auto& elem : res_in_local) {
-                                if (elem.first == s) {
-                                    res_in_local_curr.push_back(elem.second);
+                            // все резервуары на маршруте
+                            vector<int> temp_res;
+                            for (int res_idx = 0; res_idx < (int)routes[r].size(); ++res_idx) {
+                                if (routes[r][res_idx] != 0) {
+                                    temp_res.push_back(res_idx);
                                 }
                             }
-                            cout << "    Станция №" << s << ", заполненные резервуары №: ";
-                            for (size_t idx = 0; idx < res_in_local_curr.size(); ++idx) {
-                                if (idx > 0) cout << ", ";
-                                cout << res_in_local_curr[idx];
+
+                            // станции в маршруте
+                            vector<int> st_in_route;
+                            vector<pair<int,int>> res_in_local;
+                            for (int elem : temp_res) {
+                                auto key = reversed_gl[elem]; // (station, reservoir)
+                                st_in_route.push_back(key.first);
+                                res_in_local.push_back(key);
                             }
-                            cout << endl;
-                        }
 
-                        double route_time = roundN(sigma.at({k,r}), 3);
-                        cout << "  Время маршрута - " << route_time << " минут, в том числе:" << endl;
-                        total_time += route_time;
+                            // сортировка и уникализация станций
+                            sort(st_in_route.begin(), st_in_route.end());
+                            st_in_route.erase(unique(st_in_route.begin(), st_in_route.end()), st_in_route.end());
 
-                        for (const auto& entry : log.at({k,r})) {
-                            cout << "    " << entry << endl;
+                            // сортировка резервуаров
+                            sort(res_in_local.begin(), res_in_local.end());
+
+                            for (int s : st_in_route) {
+                                vector<int> res_in_local_curr;
+                                for (auto& elem : res_in_local) {
+                                    if (elem.first == s) {
+                                        res_in_local_curr.push_back(elem.second);
+                                    }
+                                }
+                                cout << "    Станция №" << s << ", заполненные резервуары №: ";
+                                for (size_t idx = 0; idx < res_in_local_curr.size(); ++idx) {
+                                    if (idx > 0) cout << ", ";
+                                    cout << res_in_local_curr[idx];
+                                }
+                                cout << endl;
+                            }
+
+                            double route_time = roundN(sigma.at({k,r}), 3);
+                            cout << "  Время маршрута - " << route_time << " минут, в том числе:" << endl;
+                            total_time += route_time;
+
+                            for (const auto& entry : log.at({k,r})) {
+                                cout << "    " << entry << endl;
+                            }
                         }
                     }
+                    cout << "Суммарное время: " << total_time << " минут" << endl;
                 }
-                cout << "Суммарное время: " << total_time << " минут" << endl;
+                cout << endl;
             }
-            cout << endl;
         }
     } else {
         cout << "Оптимальное решение не найдено." << endl;

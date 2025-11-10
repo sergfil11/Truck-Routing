@@ -15,6 +15,7 @@ tuple<
     int,
     map<pair<int, int>, int>, 
     map<pair<int, int>, vector<string>>,
+    vector<double>,
     vector<double>
     >
 gurobi_preprocessing(
