@@ -10,7 +10,8 @@
         "/MD",
         "/std:c++20",
         "/openmp",    // параллелизм
-        "/O2",  
+        "/O2",        // оптимизация сборки под скорость работы кода 
+        // "/arch:AVX2",
         "/I", "C:\\gurobi1203\\include",
         "/I", "${workspaceFolder}\\include",
         "src\\gurobi.cpp",

@@ -91,7 +91,7 @@ void print_input(const RealData& d) {
 
     cout << "\nDual piped:\n";
     for (int i = 0; i < d.dual_piped.size(); ++i) {
-        if (d.dual_piped[i] == 1) cout << "Truck "<< i << " is dualpiped\n";
+        if (d.dual_piped[i] == true) cout << "Truck "<< i << " is dualpiped\n";
     }
     cout << "\n";
 
@@ -107,7 +107,7 @@ void print_input(const RealData& d) {
 
     cout << "\nLoading prepared:\n";
     for (int i = 0; i < d.loading_prepared.size(); ++i) {
-        if (d.loading_prepared[i] == 1) cout << "Truck "<< i << " is prepared\n";
+        if (d.loading_prepared[i] == true) cout << "Truck "<< i << " is prepared\n";
     }
     cout << "\n";
 

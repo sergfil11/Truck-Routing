@@ -512,11 +512,11 @@ pair<double, vector<string>> compute_time_for_route(
     //    cout << ordered_st[i] << " ";
     // }
 
-    map<int, vector<string>> station_resevoirs {};
-    map<int, string> station_comps {};
+    unordered_map<int, vector<string>> station_resevoirs {}; 
+    unordered_map<int, string> station_comps {};
 
     for (int st : ordered_st){
-        vector <string> comps {};      // отсеки, выгружаемые на этой станции
+        vector <string> comps {};               // отсеки, выгружаемые на этой станции
         string& comps_str = station_comps[st];  // ссылка на строку в map, чтобы не создавать копию
 
         for (int i : idx) {

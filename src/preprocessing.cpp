@@ -153,7 +153,7 @@ gurobi_preprocessing(
  // вектор локальных результатов для каждого треда
   vector<set<pair<int, vector<string>>>> local_results(trucks.size());
 
-  #pragma omp parallel for
+  #pragma omp parallel for schedule(dynamic,1)
   for (int idx = 0; idx < trucks.size(); ++idx) {
       const vector<double>& truck = trucks[idx];
       // станцию и матрицу времени нужно обрезать в случае ограничений a_ik
@@ -306,7 +306,7 @@ gurobi_preprocessing(
   vector<map<pair<int,int>, double>> local_sigma(K);
   vector<map<pair<int,int>, vector<string>>> local_timelogs(K);
 
-  #pragma omp parallel for
+  #pragma omp parallel for schedule(dynamic,1)
   for (int truck = 0; truck < K; ++truck) {
     if (filling_on_route.count(truck) > 0) {
         for (int route = 0; route < filling_on_route.at(truck).size(); ++route) {
@@ -335,11 +335,11 @@ gurobi_preprocessing(
   // локальные структуры для потоков
   vector<map<pair<int, vector<int>>, 
                      tuple<double, vector<string>, vector<string>>>> local_best(K);      
-  #pragma omp parallel for
+  #pragma omp parallel for schedule(dynamic,1)
   for (int truck = 0; truck < K; ++truck) {                                                             
     if (filling_on_route.count(truck) > 0) {
         for (int route_idx = 0; route_idx < filling_on_route.at(truck).size(); ++route_idx) {
-            vector<string> fill = filling_on_route.at(truck)[route_idx];
+            const vector<string>& fill = filling_on_route[truck][route_idx];
             
             vector<int> pattern = {};
             pattern.reserve(fill.size());
@@ -369,6 +369,7 @@ gurobi_preprocessing(
   }
 
   cout << "Лучших по паттерну маршрутов:"  << best_by_pattern.size() << endl;
+
 
   //  возможно надо сначала создать ключи а потом добавлять
   map<int, vector<vector<int>>> new_filling_on_route;  // для каждого бензовоза пустой список маршрутов
