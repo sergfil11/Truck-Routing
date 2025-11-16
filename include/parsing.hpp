@@ -19,7 +19,7 @@ struct RealData {
     double daily_coefficient;
     vector<double> docs_fill;
     vector<double> H_k;
-    vector<int> loading_prepared;
+    vector<bool> loading_prepared;
     vector<int> owning;
     map<string, vector<string>> reservoir_to_product;
     map<string, set<vector<string>>> truck_to_variants;

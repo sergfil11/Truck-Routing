@@ -316,7 +316,7 @@ int main() {
     float daily_coefficient = data.daily_coefficient;
     vector<double> docs_fill = data.docs_fill;
     vector<double> H_k = data.H_k;
-    vector<int> loading_prepared = data.loading_prepared;
+    vector<bool> loading_prepared = data.loading_prepared;
     map<string, vector<string>> reservoir_to_product = data.reservoir_to_product;
     map<string, set<vector<string>>> truck_to_variants = data.truck_to_variants;
     vector<int> owning = data.owning;
@@ -326,19 +326,21 @@ int main() {
     int R2 = 10;
     double_piped = vector<bool>(K, true);
     H_k = vector<double>(K, 720);
-    //loading_prepared = vector<int>(K, 1);
+    //loading_prepared = vector<bool>(K, true);
 
 
-    tuple< 
-    map<int, vector<vector<int>>>,
-    map<pair<int, int>, double>,
-    vector<map<string, double>>, 
-    int,
-    map<pair<int, int>, int>, 
-    map<pair<int, int>, vector<string>>,
-    vector<double>,
-    vector<double>
-    > result = gurobi_preprocessing(
+// tuple<
+//     unique_ptr<map<int, vector<vector<int>>>>,
+//     unique_ptr<map<pair<int,int>, double>>,
+//     unique_ptr<vector<map<string,double>>>,
+//     int,
+//     unique_ptr<map<pair<int,int>, int>>,
+//     unique_ptr<map<pair<int,int>, vector<string>>>,
+//     unique_ptr<vector<double>>,
+//     unique_ptr<vector<double>>
+//     > result
+    auto t4 = chrono::system_clock::now();
+    auto [filling_on_route, sigma, reservoirs, tank_count, gl_num, log, H_k_out, filling_times] = gurobi_preprocessing(
         N, H, K,
         time_matrix,
         depot_times,
@@ -355,17 +357,8 @@ int main() {
         truck_to_variants
     );
 
-    // Распаковка результата
-    auto& filling_on_route = get<0>(result);
-    auto& sigma            = get<1>(result);
-    auto& reservoirs       = get<2>(result);
-    int tank_count         = get<3>(result);
-    auto& gl_num           = get<4>(result);
-    auto& log              = get<5>(result);
-    auto& H_k_out          = get<6>(result);
-    auto& filling_times    = get<7>(result);
-
-    cout << "=== Gurobi_preprocessing закончилось ===\n";
+    
+    cout << "=== Gurobi_preprocessing закончилось за " << roundN(chrono::duration<double>(chrono::system_clock::now() - t4).count(), 3) << " сек. ===\n";
     
 
     // for (const auto& [truck, routes] : filling_on_route) {

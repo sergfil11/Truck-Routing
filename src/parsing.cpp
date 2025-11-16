@@ -40,7 +40,7 @@ RealData load_real_data(const string& name) {
     result.daily_coefficient = data["daily_coefficient"];
     result.docs_fill = data["docs_fill"].get<vector<double>>();
     result.H_k = data["H_k"].get<vector<double>>();
-    result.loading_prepared = data["loading_prepared"].get<vector<int>>();
+    result.loading_prepared = data["loading_prepared"].get<vector<bool>>();
     result.owning = data["owning"].get<vector<int>>();
     result.reservoir_to_product = data["reservoir_to_product"].get<map<string, vector<string>>>();
     result.truck_to_variants = data["truck_to_variants"].get<map<string, set<vector<string>>>>();

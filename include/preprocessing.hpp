@@ -33,7 +33,7 @@ gurobi_preprocessing(
     double daily_coefficient,
     vector<double>& docs_fill,
     vector<double>& H_k,
-    vector<int>& loading_prepared,
+    vector<bool>& loading_prepared,
     const map<string, vector<string>>& reservoir_to_product = {},
     const map<string, set<vector<string>>>& truck_to_variants = {}
   );

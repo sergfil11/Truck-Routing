@@ -1,2 +1,7 @@
 gurobi.log
 instances
+gurobi.obj
+main.obj
+prep_functions.obj
+preprocessing.obj
+parsing.obj
