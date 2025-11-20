@@ -24,6 +24,9 @@ struct RealData {
     map<string, vector<string>> reservoir_to_product;
     map<string, set<vector<string>>> truck_to_variants;
     vector<int> is_critical;
+    vector<vector<vector<double>>> consumption_percent;
+    vector<vector<double>> consumption;
+    vector<double> starting_time;
 };
 
 

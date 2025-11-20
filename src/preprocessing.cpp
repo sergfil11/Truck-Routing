@@ -1,4 +1,5 @@
 #include "prep_functions.hpp"
+#include "preprocessing.hpp"
 #include <numeric>
 #include <iostream>
 #include <chrono>
@@ -32,16 +33,17 @@
  *         - H_k               Массив длительностей смен для бензовозов (с учётом времени, добавленного в смену вледствие загрузки под сменщика после обработки loading_prepared)
  */
 
-tuple< 
-    map<int, vector<vector<int>>>,
-    map<pair<int, int>, double>,
-    vector<map<string, double>>, 
-    int,
-    map<pair<int, int>, int>, 
-    map<pair<int, int>, vector<string>>,
-    vector<double>,
-    vector<double>
-    >
+// tuple< 
+//     map<int, vector<vector<int>>>,
+//     map<pair<int, int>, double>,
+//     vector<map<string, double>>, 
+//     int,
+//     map<pair<int, int>, int>, 
+//     map<pair<int, int>, vector<string>>,
+//     vector<double>,
+//     vector<double>
+//     >
+Result
 gurobi_preprocessing(
     int N,
     int H,
@@ -58,8 +60,11 @@ gurobi_preprocessing(
     vector<double>& docs_fill,
     vector<double>& H_k,
     vector<bool>& loading_prepared,
+    vector<vector<vector<double>>>& consumption_percent,
     const map<string, vector<string>>& reservoir_to_product,
-    const map<string, set<vector<string>>>& truck_to_variants
+    const map<string, set<vector<string>>>& truck_to_variants,
+    const vector<vector<double>>& consumption,
+    const vector<double>& starting_time
   ){
 
   // значения по умолчанию
@@ -74,8 +79,27 @@ gurobi_preprocessing(
   if (loading_prepared.empty())
       loading_prepared = vector<bool> (K, false);
   
-  vector<double> filling_times(K, 0);
 
+  // абсолютные значения потребления
+  for (int st_idx = 0; st_idx < N; ++st_idx) {
+    for (int res_idx = 0; res_idx < consumption_percent[st_idx].size(); ++res_idx) {
+      for (int var_idx = 0; var_idx < consumption_percent[st_idx][res_idx].size(); ++var_idx) {
+        consumption_percent[st_idx][res_idx][var_idx] *= consumption[st_idx][res_idx];
+      }
+    }
+  }
+
+  // кумулятивные абсолютные значения потребления
+  for (int st_idx = 0; st_idx < N; ++st_idx) {
+    for (int res_idx = 0; res_idx < consumption_percent[st_idx].size(); ++res_idx) {
+      for (int var_idx = 1; var_idx < consumption_percent[st_idx][res_idx].size(); ++var_idx) {
+        consumption_percent[st_idx][res_idx][var_idx] += consumption_percent[st_idx][res_idx][var_idx - 1];
+      }
+    }
+  }
+
+
+  vector<double> filling_times(K, 0);
   // если загружен под сменщика, увеличиваем длину смены на время заполнения в депо
   for (int truck = 0; truck < K; ++truck) {
     if (loading_prepared[truck] == true) {
@@ -115,14 +139,17 @@ gurobi_preprocessing(
   vector<vector<int>> cut_access;
   vector<map<string, vector<double>>> demanded_st;
   vector<map<string, double>> demanded_depot_times;
+  vector<vector<vector<double>>> demanded_consumptions;
 
-  // "срезаем" пустые станции в векторах access и stations
+  // "срезаем" пустые станции в векторах access, stations, depot_times и consumption_percent
   for (int idx : demanded_idx) {
       cut_access.push_back(access[idx]);
       demanded_st.push_back(stations[idx]);
       demanded_depot_times.push_back(depot_times[idx]);
+      demanded_consumptions.push_back(consumption_percent[idx]);
   }
 
+  // TODO: добавить в станцию вектор кумулятивных потреблений резервуаров (уже обработав consumption и consumption_percent)
   // создаём вектор станций
   vector<Station> input_station_list;
   for (int i = 0; i < demanded_st.size(); ++i) {
@@ -131,7 +158,8 @@ gurobi_preprocessing(
         demanded_depot_times[i].at("to") * daily_coefficient,
         demanded_depot_times[i].at("from") * daily_coefficient,
         demanded_st[i].at("min"),
-        demanded_st[i].at("max")
+        demanded_st[i].at("max"),
+        demanded_consumptions[i]
     );
     input_station_list.push_back(move(st));
   }
@@ -153,7 +181,7 @@ gurobi_preprocessing(
  // вектор локальных результатов для каждого треда
   vector<set<pair<int, vector<string>>>> local_results(trucks.size());
 
-  #pragma omp parallel for schedule(dynamic,1)
+  #pragma omp parallel for schedule(static)             // лучше guided
   for (int idx = 0; idx < trucks.size(); ++idx) {
       const vector<double>& truck = trucks[idx];
       // станцию и матрицу времени нужно обрезать в случае ограничений a_ik
@@ -197,7 +225,7 @@ gurobi_preprocessing(
       
       // для параметров (1..R1)
       for (int r = 1; r < R1+1; r++) {
-          set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
+          set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck, starting_time[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
           
           // нужно проверить, можно ли эти заполнения использовать для текущего бензовоза, для этого:
           // 1. Для каждого заполнения берём номера используемых резервуаров в глобальной нумерации
@@ -234,7 +262,7 @@ gurobi_preprocessing(
             vector<double> truck_cut = truck;              // создаём копию
             truck_cut.erase(truck_cut.begin() + comp_n);   // удаляем i-ый отсек
           
-            set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck_cut), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
+            set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck_cut, starting_time[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
             
             for (const vector<string>& filling : val) {
               vector<string> converted_filling = convert_compartments(truck_cut.size(), filling, gl_res_to_product);    // по заполнению строим схему загрузки
@@ -306,7 +334,13 @@ gurobi_preprocessing(
   vector<map<pair<int,int>, double>> local_sigma(K);
   vector<map<pair<int,int>, vector<string>>> local_timelogs(K);
 
-  #pragma omp parallel for schedule(dynamic,1)
+  for (int truck = 0; truck < K; ++truck) {
+    if (filling_on_route.count(truck) > 0) {
+      cout << "Количество разгрузок для бензовоза " << truck << ": " << filling_on_route.at(truck).size() << endl;
+    }
+  }
+
+  #pragma omp parallel for schedule(guided)
   for (int truck = 0; truck < K; ++truck) {
     if (filling_on_route.count(truck) > 0) {
         for (int route = 0; route < filling_on_route.at(truck).size(); ++route) {
@@ -335,7 +369,7 @@ gurobi_preprocessing(
   // локальные структуры для потоков
   vector<map<pair<int, vector<int>>, 
                      tuple<double, vector<string>, vector<string>>>> local_best(K);      
-  #pragma omp parallel for schedule(dynamic,1)
+  #pragma omp parallel for schedule(static)
   for (int truck = 0; truck < K; ++truck) {                                                             
     if (filling_on_route.count(truck) > 0) {
         for (int route_idx = 0; route_idx < filling_on_route.at(truck).size(); ++route_idx) {
@@ -396,11 +430,11 @@ gurobi_preprocessing(
 //   cout << "Лог:" << new_log.size() << endl;
 
   auto t5 = chrono::system_clock::now();
-
-  filling_on_route.clear();
-  sigma.clear();
-  gl_num.clear();
-  timelogs.clear();
+{
+    std::map<int, vector<vector<string>>>().swap(filling_on_route);
+    std::map<pair<int,int>, double>().swap(sigma);
+    std::map<pair<int,int>, vector<string>>().swap(timelogs);
+}
 
   // map<int, vector<vector<string>>>().swap(filling_on_route);
   // map<pair<int,int>, double>().swap(sigma);
@@ -413,6 +447,7 @@ gurobi_preprocessing(
 
   t2 = chrono::system_clock::now();
   cout << "Время вычисления длительностей:" << roundN(chrono::duration<double>(t2 - t1).count(), 3) << " сек." << endl;
+
 
   return {move(new_filling_on_route), move(new_sigma), move(reservoirs), tank_count, move(gl_num), move(new_log), move(H_k), move(filling_times)};
 }

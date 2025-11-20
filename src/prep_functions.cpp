@@ -12,17 +12,20 @@ using namespace std;
 // Классы Truck и Station для дальнейшего использования в препроцессинге
 
 Station::Station(int number, double time_to_depot, double time_from_depot,
-            const vector<double>& demand, const vector<double>& remaining_spaces) :
+            const vector<double>& demand, const vector<double>& remaining_spaces, const vector<vector<double>>& consumption_percent):
   number(number),
   time_to_depot(time_to_depot),
   time_from_depot(time_from_depot),
   demand(demand),
-  remaining_spaces(remaining_spaces){};
+  remaining_spaces(remaining_spaces),
+  consumption_percent(consumption_percent){};
 
 
-Truck::Truck(int number, const vector<double>& compartments): 
+
+Truck::Truck(int number, const vector<double>& compartments, int starting_time): 
   number(number), 
-  compartments(compartments){};
+  compartments(compartments),
+  starting_time(starting_time){};
 
 
 // Функции для работы с маской внутри алгоритма динамического программирования
@@ -238,12 +241,39 @@ vector<string> convert_compartments(int compartments_count, const vector<string>
 }
 
 
-// Возвращает заполнения для выбранного грузовика и станций (в глобальной нумерации)
-vector<vector<string>> get_fillings(const Truck& truck, const vector<Station>& chosen_stations, const map<pair<int, int>, int>& gl_num) {
+/**  
+* Возвращает заполнения для выбранного грузовика и станций (в глобальной нумерации)
+
+......
+* @param arrival_time                   Массив времён прибытия на станции
+* @param hourly_accumulated_consumption Массив кумулятивных почасовых потреблений в абсолютных величинах топлива для каждого резервуара
+*/ 
+
+vector<vector<string>> get_fillings(
+    const Truck& truck, 
+    const vector<Station>& chosen_stations, 
+    const map<pair<int, int>, int>& gl_num, 
+    const vector<double>& arrival_time
+    ) {
     vector<double> mins, maxs;
-    for (Station st : chosen_stations){                                 // добавляем резервуары из станций, аналог extend
+
+    for (int i = 0; i < chosen_stations.size(); ++i){        // добавляем резервуары из станций, аналог extend
+        Station st = chosen_stations[i];
+
+        int hour_number = (arrival_time[i] + truck.starting_time)/ 60; // целая часть от времени прибытия на станцию + начальный сдвиг
+        hour_number = max(hour_number, 0);                             // строго положительный
+        hour_number = min(hour_number, 11);                            // не больше 11
+        
+        // cout << "arrival_time: " << arrival_time[i] << " starting_time: " << truck.starting_time << " hour_number: " << hour_number << endl;
+        
+        vector<double> upper_bounds; 
+        for (int res_idx = 0; res_idx < st.remaining_spaces.size(); res_idx++) {
+            upper_bounds.push_back(st.remaining_spaces[res_idx] + st.consumption_percent[res_idx][hour_number]);    
+        }
+        
+        maxs.insert(maxs.end(), upper_bounds.begin(), upper_bounds.end());
         mins.insert(mins.end(), st.demand.begin(), st.demand.end());
-        maxs.insert(maxs.end(), st.remaining_spaces.begin(), st.remaining_spaces.end());
+        //maxs.insert(maxs.end(), st.remaining_spaces.begin(), st.remaining_spaces.end());
     }
 
     vector<int> local_to_global;
@@ -289,7 +319,8 @@ vector<vector<string>> get_fillings(const Truck& truck, const vector<Station>& c
 // TODO: unordered_set<vector<int>>, написать хэш для вектора
 
 set<vector<string>> find_routes(
-    vector<Station> current_route, 
+    vector<Station> current_route,
+    vector<double> arrival_times,  
     const vector<Station>& stations,
     set<set<int>>& seen_routes, 
     const Truck& truck,
@@ -318,7 +349,7 @@ set<vector<string>> find_routes(
         // }
         // cout << "], curr_time: " << current_time << endl;
         
-        vector<vector<string>> fillings = get_fillings(truck, current_route, gl_num);
+        vector<vector<string>> fillings = get_fillings(truck, current_route, gl_num, arrival_times);
 
         // if (fillings.empty()) {
         //     cout << "⚠️ Нет заполнений для маршрута: ";
@@ -368,6 +399,7 @@ set<vector<string>> find_routes(
 
     // 4.Для оставшихся станций строим новые маршруты
     set<vector<string>> result;
+    vector<double> new_arrival_times = arrival_times;  
     for (const auto& [time, idx] : res) {
         bool already_in_route = false;
         for (const Station& st : current_route) {
@@ -379,8 +411,11 @@ set<vector<string>> find_routes(
         if (already_in_route) continue;
 
         current_route.push_back(stations[idx]);
-        set<vector<string>> tmp = find_routes(current_route, stations, seen_routes, truck, gl_num, local_index, time_to_station, current_time + time, st_in_trip, top_nearest, H);
+        
+        new_arrival_times.push_back(current_time + time); 
+        set<vector<string>> tmp = find_routes(current_route, new_arrival_times, stations, seen_routes, truck, gl_num, local_index, time_to_station, current_time + time, st_in_trip, top_nearest, H);
         current_route.pop_back();
+        new_arrival_times.pop_back();
 
         result.insert(tmp.begin(), tmp.end());
     }
@@ -427,8 +462,8 @@ set<vector<string>> all_fillings(              // TODO: сделать unordered
     
     for (const Station& station : stations){
         vector<Station> initial_route = {station};  
-        int start_time = station.time_from_depot + (accumulate(truck.compartments.begin(), truck.compartments.end(), 0.0) / 1000.0) * 3;        // pour_time
-        set<vector<string>> tmp = find_routes(initial_route, stations, seen_routes, truck, gl_num, local_index, time_to_station, start_time, st_in_trip, top_nearest, H);
+        double start_time = station.time_from_depot + (accumulate(truck.compartments.begin(), truck.compartments.end(), 0.0) / 1000.0) * 3;        // pour_time
+        set<vector<string>> tmp = find_routes(initial_route, {start_time}, stations, seen_routes, truck, gl_num, local_index, time_to_station, start_time, st_in_trip, top_nearest, H);
         final_set.insert(tmp.begin(), tmp.end());
     }
 

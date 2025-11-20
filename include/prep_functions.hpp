@@ -17,10 +17,11 @@ public:
     double time_from_depot;
     vector<double> demand;
     vector<double> remaining_spaces;
+    vector<vector<double>> consumption_percent; 
 
     // конструктор
     Station(int number, double time_to_depot, double time_from_depot,
-            const vector<double>& demand, const vector<double>& remaining_spaces);
+            const vector<double>& demand, const vector<double>& remaining_spaces, const vector<vector<double>>& consumption_percent);
 
 };
 
@@ -28,7 +29,8 @@ class Truck {
 public:
     int number;
     vector<double> compartments;
-    Truck(int number, const vector<double>& compartments);
+    int starting_time;
+    Truck(int number, const vector<double>& compartments, int starting_time);
 };
 
 // Utility
@@ -64,7 +66,7 @@ pair<vector<int>, vector<vector<vector<string>>>> dp_max_unique_digits_all_masks
 vector<vector<string>> possible_filling(const vector<double>& compartments, const vector<double>& mins, const vector<double>& maxs);
 
 // Возвращает заполнения для выбранного грузовика и станций
-vector<vector<string>> get_fillings(const Truck& truck, const vector<Station>& chosen_stations, const map<pair<int, int>, int>& gl_num);
+vector<vector<string>> get_fillings(const Truck& truck, const vector<Station>& chosen_stations, const map<pair<int, int>, int>& gl_num, const vector<double>& arrival_time);
 
 set<vector<string>> all_fillings(
     const vector<Station>& stations, 
@@ -79,6 +81,7 @@ set<vector<string>> all_fillings(
 
 set<vector<string>> find_routes(
     vector<Station> current_route, 
+    vector<double> arrival_times, 
     const vector<Station>& stations,
     set<set<int>>& seen_routes, 
     const Truck& truck,

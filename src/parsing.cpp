@@ -3,6 +3,7 @@
 #include <iostream>
 #include "json.hpp"
 #include "parsing.hpp"
+#include "prep_functions.hpp"
 
 
 using json = nlohmann::json;
@@ -45,6 +46,9 @@ RealData load_real_data(const string& name) {
     result.reservoir_to_product = data["reservoir_to_product"].get<map<string, vector<string>>>();
     result.truck_to_variants = data["truck_to_variants"].get<map<string, set<vector<string>>>>();
     result.is_critical = data["is_critical"].get<vector<int>>();
+    result.consumption_percent = data["consumption_percent"].get<vector<vector<vector<double>>>>();
+    result.consumption = data["consumption"].get<vector<vector<double>>>();
+    result.starting_time = data["starting_time"].get<vector<double>>();
 
     cout << "Data loaded successfully!" << endl;
     return result;
@@ -141,31 +145,29 @@ void print_input(const RealData& d) {
         cout << "\n";
     }
 
-    // Truck to variants - аналогично, если ключи строки
-    // cout << "\nTruck to variants:\n";
-    // map<int, set<vector<string>>> temp_trucks;
-    // for (auto& [truck_str, variants_set] : d.truck_to_variants) {
-    //     try {
-    //         int truck_int = stoi(truck_str);
-    //         temp_trucks[truck_int] = variants_set;
-    //     } catch (const exception& e) {
-    //         cerr << "Warning: truck key is not a number: " << truck_str << endl;
-    //     }
-    // }
+    cout << "\nConsumption percents:\n";
+    int c = 0;
+    for (auto& st : d.consumption_percent) {
+        cout << "Station " << c++ << ": \n";
+        for (auto& res : st){
+            for (auto v : res) cout << (roundN(v, 2) * 100.0) << "% ";
+            cout << "\n";
+        }
+    }
 
-    // for (auto& [truck, variants_set] : temp_trucks) {
-    //     cout << "Truck " << truck << ":\n";
-    //     for (auto& variant : variants_set) {
-    //         cout << "  Variant: ";
-    //         for (auto& elem : variant) {
-    //             if (elem.empty()) {
-    //                 cout << "none ";
-    //             } else {
-    //                 cout << elem << " ";
-    //             }
-    //         }
-    //         cout << "\n";
-    //     }
-    // }
-    // cout << "\n";
+    cout << "\nConsumption:\n";
+    c = 0;
+    for (auto& row : d.consumption) {
+        cout << "Station " << c++ << ": ";
+        for (auto v : row) cout << v << " ";
+        cout << "\n";
+    }
+
+    cout << "\nStarting time:\n";
+    c = 0;
+    for (auto v : d.starting_time) {
+       cout << "Truck " << c++ << ": " << v << " minutes\n";
+    }
+    cout << "\n";
+    
 }
