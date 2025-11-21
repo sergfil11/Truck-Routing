@@ -105,7 +105,7 @@ gurobi_preprocessing(
     if (loading_prepared[truck] == true) {
         double sum_truck = accumulate(trucks[truck].begin(), trucks[truck].end(), 0.0);
         double filling_time = (sum_truck / 1000.0) * 3;
-        H_k[truck] += filling_time;
+        // H_k[truck] += filling_time;
         filling_times[truck] = filling_time;
     }
   }
@@ -140,6 +140,7 @@ gurobi_preprocessing(
   vector<map<string, vector<double>>> demanded_st;
   vector<map<string, double>> demanded_depot_times;
   vector<vector<vector<double>>> demanded_consumptions;
+  vector<double> demanded_docs_fill;
 
   // "срезаем" пустые станции в векторах access, stations, depot_times и consumption_percent
   for (int idx : demanded_idx) {
@@ -147,6 +148,7 @@ gurobi_preprocessing(
       demanded_st.push_back(stations[idx]);
       demanded_depot_times.push_back(depot_times[idx]);
       demanded_consumptions.push_back(consumption_percent[idx]);
+      demanded_docs_fill.push_back(docs_fill[idx]);
   }
 
   // TODO: добавить в станцию вектор кумулятивных потреблений резервуаров (уже обработав consumption и consumption_percent)
@@ -159,7 +161,8 @@ gurobi_preprocessing(
         demanded_depot_times[i].at("from") * daily_coefficient,
         demanded_st[i].at("min"),
         demanded_st[i].at("max"),
-        demanded_consumptions[i]
+        demanded_consumptions[i],
+        demanded_docs_fill[i]
     );
     input_station_list.push_back(move(st));
   }
@@ -225,7 +228,7 @@ gurobi_preprocessing(
       
       // для параметров (1..R1)
       for (int r = 1; r < R1+1; r++) {
-          set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck, starting_time[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
+          set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck, starting_time[idx], loading_prepared[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
           
           // нужно проверить, можно ли эти заполнения использовать для текущего бензовоза, для этого:
           // 1. Для каждого заполнения берём номера используемых резервуаров в глобальной нумерации
@@ -262,7 +265,7 @@ gurobi_preprocessing(
             vector<double> truck_cut = truck;              // создаём копию
             truck_cut.erase(truck_cut.begin() + comp_n);   // удаляем i-ый отсек
           
-            set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck_cut, starting_time[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
+            set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck_cut, starting_time[idx], loading_prepared[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
             
             for (const vector<string>& filling : val) {
               vector<string> converted_filling = convert_compartments(truck_cut.size(), filling, gl_res_to_product);    // по заполнению строим схему загрузки
@@ -348,6 +351,7 @@ gurobi_preprocessing(
             auto [computed_time, timelog] = compute_time_for_route(
                 reverse_global,
                 trucks[truck],
+                loading_prepared[truck],
                 fill,
                 double_piped[truck],
                 input_station_list,

@@ -49,7 +49,7 @@ int main() {
     int R1 = 3;
     int R2 = 12;
     double_piped = vector<bool>(K, false);
-    H_k = vector<double>(K, 720);
+    // H_k = vector<double>(K, 720.0);
     loading_prepared = vector<bool>(K, true);
 
 
@@ -93,10 +93,10 @@ int main() {
     auto old_buf = cout.rdbuf(file.rdbuf());
 
 
-    // for (int j = 0; j < 5; j++) {
-        int double_race_number = 3;     // число бензовозов, делающих по 2 рейса
+    for (int j = 0; j < 4; j++) {
+        int double_race_number = j;     // число бензовозов, делающих по 2 рейса
 
-        for (int i = 0; i < 13; i++) {
+        for (int i = 0; i < 8; i++) {
         int load_number = i;     // число бензовозов, после рейса заполняющихся под сменщика
 
             cout << "=== Начало работы Gurobi с параметрами load_number = " << load_number << ", double_race_number = " << double_race_number << " ===\n";
@@ -121,17 +121,17 @@ int main() {
             auto t4 = chrono::system_clock::now();
             cout << "Время работы Gurobi: " << roundN(chrono::duration<double>(t4 - t3).count(), 3) << " сек." << endl;
 
-            bool print_logs;
-            if (double_race_number == 3) {
-                print_logs = true;
-            }
-            else {
-                print_logs = false;
-            }
+            bool print_logs = false;
+            // if (double_race_number == 3) {
+            //     print_logs = true;
+            // }
+            // else {
+            //     print_logs = false;
+            // }
 
-            gurobi_results(*res->model, res->y, res->g, filling_on_route, gl_num, log, sigma, print_logs);
+            gurobi_results(*res->model, res->y, res->g, res->l, res->s, filling_on_route, gl_num, log, sigma, print_logs);
         }        
-    // }
+    }
     cout.rdbuf(old_buf);
     // gurobi_results(*res->model, res->y, res->g, filling_on_route, gl_num, log, sigma);
 

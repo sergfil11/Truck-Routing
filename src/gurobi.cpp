@@ -166,6 +166,8 @@ void gurobi_results(
     GRBModel& model,
     const map<int, GRBVar>& y,
     const map<pair<int,int>, GRBVar>& g,
+    const map<int, GRBVar>& l,
+    const map<int, GRBVar>& s,
     const map<int, vector<vector<int>>>& filling_on_route,   // грузовику -> список маршрутов -> список заполнений
     const map<pair<int,int>, int>& gl_num,                   // (станция, резервуар) -> глобальный номер
     const map<pair<int,int>, vector<string>>& log,           // (k,r) -> лог действий
@@ -203,6 +205,8 @@ void gurobi_results(
         if (print_logs == true) {
             for (const auto& [k, routes] : filling_on_route) {
                 if (y.at(k).get(GRB_DoubleAttr_X) > 0.5) {
+                    if (s.at(k).get(GRB_DoubleAttr_X) > 0.5) cout << "Бензовоз " << (k+1) << "выполняет два рейса\n";
+                    if (l.at(k).get(GRB_DoubleAttr_X) > 0.5) cout << "Бензовоз " << (k+1) << "загружен под сменщика\n";
                     cout << "Бензовоз " << (k+1) << " используется, выбранные маршруты:" << endl;
                     double total_time = 0.0;
 

@@ -12,20 +12,22 @@ using namespace std;
 // Классы Truck и Station для дальнейшего использования в препроцессинге
 
 Station::Station(int number, double time_to_depot, double time_from_depot,
-            const vector<double>& demand, const vector<double>& remaining_spaces, const vector<vector<double>>& consumption_percent):
+            const vector<double>& demand, const vector<double>& remaining_spaces, const vector<vector<double>>& consumption_percent, int docs_fill):
   number(number),
   time_to_depot(time_to_depot),
   time_from_depot(time_from_depot),
   demand(demand),
   remaining_spaces(remaining_spaces),
-  consumption_percent(consumption_percent){};
+  consumption_percent(consumption_percent),
+  docs_fill(docs_fill){};
 
 
 
-Truck::Truck(int number, const vector<double>& compartments, int starting_time): 
+Truck::Truck(int number, const vector<double>& compartments, int starting_time, bool loaded): 
   number(number), 
   compartments(compartments),
-  starting_time(starting_time){};
+  starting_time(starting_time),
+  loaded(loaded){};
 
 
 // Функции для работы с маской внутри алгоритма динамического программирования
@@ -263,12 +265,13 @@ vector<vector<string>> get_fillings(
         int hour_number = (arrival_time[i] + truck.starting_time)/ 60; // целая часть от времени прибытия на станцию + начальный сдвиг
         hour_number = max(hour_number, 0);                             // строго положительный
         hour_number = min(hour_number, 11);                            // не больше 11
-        
+        // cout << "hour_number: " << hour_number;
         // cout << "arrival_time: " << arrival_time[i] << " starting_time: " << truck.starting_time << " hour_number: " << hour_number << endl;
         
         vector<double> upper_bounds; 
         for (int res_idx = 0; res_idx < st.remaining_spaces.size(); res_idx++) {
             upper_bounds.push_back(st.remaining_spaces[res_idx] + st.consumption_percent[res_idx][hour_number]);    
+            // cout << "st_addition: " << st.consumption_percent[res_idx][hour_number] << " ";
         }
         
         maxs.insert(maxs.end(), upper_bounds.begin(), upper_bounds.end());
@@ -382,10 +385,13 @@ set<vector<string>> find_routes(
         res.resize(top_nearest);
     }
 
-    // 3.Обрезаем те, что не подходят по времени
+    current_time += last_station.docs_fill;     // увеличиваем текущее время на заполнение документов
+    current_time += 12;                         // увеличиваем текущее время на время выгрузки отсеков (хотя бы одного, размером 4000л.)
+
+    // 3.Обрезаем те, что не подходят по времени (берём с запасом чтобы ничего не упустить, время всё равно ещё пересчитывать)
     auto it = find_if(res.begin(), res.end(),
     [&](const pair<double,int>& p){
-        return current_time + p.first + stations[p.second].time_to_depot > H;
+        return current_time + p.first + stations[p.second].time_to_depot > H * 1.25;
     });
     res.erase(it, res.end());
 
@@ -412,6 +418,8 @@ set<vector<string>> find_routes(
 
         current_route.push_back(stations[idx]);
         
+        
+
         new_arrival_times.push_back(current_time + time); 
         set<vector<string>> tmp = find_routes(current_route, new_arrival_times, stations, seen_routes, truck, gl_num, local_index, time_to_station, current_time + time, st_in_trip, top_nearest, H);
         current_route.pop_back();
@@ -462,8 +470,27 @@ set<vector<string>> all_fillings(              // TODO: сделать unordered
     
     for (const Station& station : stations){
         vector<Station> initial_route = {station};  
-        double start_time = station.time_from_depot + (accumulate(truck.compartments.begin(), truck.compartments.end(), 0.0) / 1000.0) * 3;        // pour_time
-        set<vector<string>> tmp = find_routes(initial_route, {start_time}, stations, seen_routes, truck, gl_num, local_index, time_to_station, start_time, st_in_trip, top_nearest, H);
+        double start_time = station.time_from_depot;
+
+        if (!truck.loaded)
+            cout <<"ERROR" << "\n";
+            start_time += (accumulate(truck.compartments.begin(), truck.compartments.end(), 0.0) / 1000.0) * 3;
+        // cout << "start_time = " << start_time << ", loaded = " << truck.loaded << "\n";
+
+        set<vector<string>> tmp = find_routes(
+            initial_route, 
+            {start_time},
+            stations,
+            seen_routes,
+            truck,
+            gl_num,
+            local_index,
+            time_to_station, 
+            start_time, 
+            st_in_trip, 
+            top_nearest, 
+            H
+        );
         final_set.insert(tmp.begin(), tmp.end());
     }
 
@@ -520,6 +547,7 @@ inline void log_time(const string& message, vector<string>& time_log) {
 pair<double, vector<string>> compute_time_for_route(
     const map<int, pair<int, int>>& reverse_index,
     const vector<double>& compartments, 
+    bool loaded,
     const vector<string>& fill,
     bool double_piped,
     const vector<Station>& input_station_list,
@@ -585,10 +613,19 @@ pair<double, vector<string>> compute_time_for_route(
 
         // если только один рукав, знаем времена
         if (!double_piped){
-            time += 2 * roundN(pour_time, 3);    // время на заполнение бензовоза (до рейса и во время)
-            log_time(to_string(2 * roundN(pour_time, 3)) + " минут - заполнение резервуаров одним шлангом на станциях и в депо", time_log);
+            if (!loaded) {
+                cout << "ERROR" << endl;
+                time += 2 * roundN(pour_time, 3);    // время на заполнение бензовоза (до рейса и во время)
+                log_time(to_string(2 * roundN(pour_time, 3)) + " минут - заполнение резервуаров одним шлангом на станциях и в депо", time_log);
+            }
+            else {
+                time += roundN(pour_time, 3);    // время на заполнение бензовоза (во время рейса)
+                log_time(to_string(roundN(pour_time, 3)) + " минут - заполнение резервуаров одним шлангом на станциях", time_log);
+            }
+            
         }
         else {      // двушланговый, пытаемся быстрее разгрузить
+            cout << "ERROR" << endl;
             for (int st : perm) {
                 if (station_comps[st].size() > 1) {   // если на станции выгружается больше одного отсека
                     vector<double> reservoir_fill_values {}; 
@@ -609,9 +646,10 @@ pair<double, vector<string>> compute_time_for_route(
                        log_time(to_string(optimal_filling_time) + " минут - заполнение одного резервуара одним шлангом на станции " + to_string(st), time_log);
                 }
             }
-            time += roundN(pour_time, 3);
-            log_time(to_string(roundN(pour_time,3)) + "минут - заполнение резервуаров одним шлангом в депо", time_log);
-            
+            if (!loaded) {
+                time += roundN(pour_time, 3);
+                log_time(to_string(roundN(pour_time,3)) + "минут - заполнение резервуаров одним шлангом в депо", time_log);
+            }
         }
 
         int first = perm[0];                                      // достали станцию

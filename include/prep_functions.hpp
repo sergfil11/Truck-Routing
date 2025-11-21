@@ -18,10 +18,11 @@ public:
     vector<double> demand;
     vector<double> remaining_spaces;
     vector<vector<double>> consumption_percent; 
+    double docs_fill;
 
     // конструктор
     Station(int number, double time_to_depot, double time_from_depot,
-            const vector<double>& demand, const vector<double>& remaining_spaces, const vector<vector<double>>& consumption_percent);
+            const vector<double>& demand, const vector<double>& remaining_spaces, const vector<vector<double>>& consumption_percent, int docs_fill);
 
 };
 
@@ -30,7 +31,8 @@ public:
     int number;
     vector<double> compartments;
     int starting_time;
-    Truck(int number, const vector<double>& compartments, int starting_time);
+    bool loaded;
+    Truck(int number, const vector<double>& compartments, int starting_time, bool loaded);
 };
 
 // Utility
@@ -101,6 +103,7 @@ double two_pipes_opt(const vector<double>& fill_times);
 pair<double, vector<string>> compute_time_for_route(
     const map<int, pair<int, int>>& reverse_index,
     const vector<double>& compartments, 
+    bool loaded,
     const vector<string>& fill,
     bool double_piped,
     const vector<Station>& input_station_list,
