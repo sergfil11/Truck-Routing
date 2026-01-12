@@ -32,7 +32,8 @@ public:
     vector<double> compartments;
     int starting_time;
     bool loaded;
-    Truck(int number, const vector<double>& compartments, int starting_time, bool loaded);
+    int owning;
+    Truck(int number, const vector<double>& compartments, int starting_time, bool loaded, int owning);
 };
 
 // Utility
@@ -108,7 +109,8 @@ pair<double, vector<string>> compute_time_for_route(
     bool double_piped,
     const vector<Station>& input_station_list,
     const vector<vector<double>>& demanded_matrix,
-    const vector<double>& docs_fill
+    const vector<double>& docs_fill,
+    const int owned
     );
 
 

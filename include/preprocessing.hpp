@@ -8,7 +8,7 @@
 
 
   struct Result {
-    std::map<int, std::vector<std::vector<int>>> filling_on_route;
+    std::map<int, std::vector<std::vector<string>>> filling_on_route;
     std::map<std::pair<int,int>, double> sigma;
     std::vector<std::map<std::string,double>> reservoirs;
     int tank_count;
@@ -51,5 +51,6 @@ gurobi_preprocessing(
     const map<string, vector<string>>& reservoir_to_product = {},
     const map<string, set<vector<string>>>& truck_to_variants = {},
     const vector<vector<double>>& consumption = {},
-    const vector<double>& starting_time = {}
+    const vector<double>& starting_time = {},
+    const vector<int>& owning = {}
   );

@@ -6,6 +6,8 @@
 #include <numeric>
 #include <cmath>
 #include <assert.h>
+#include <cstdio>
+#include <cstring>
 
 using namespace std;
 
@@ -23,11 +25,13 @@ Station::Station(int number, double time_to_depot, double time_from_depot,
 
 
 
-Truck::Truck(int number, const vector<double>& compartments, int starting_time, bool loaded): 
+Truck::Truck(int number, const vector<double>& compartments, int starting_time, bool loaded, int owning): 
   number(number), 
   compartments(compartments),
   starting_time(starting_time),
-  loaded(loaded){};
+  loaded(loaded),
+  owning(owning)
+  {};
 
 
 // Функции для работы с маской внутри алгоритма динамического программирования
@@ -473,9 +477,17 @@ set<vector<string>> all_fillings(              // TODO: сделать unordered
         double start_time = station.time_from_depot;
 
         if (!truck.loaded)
-            cout <<"ERROR" << "\n";
+            // cout <<"ERROR" << "\n";
             start_time += (accumulate(truck.compartments.begin(), truck.compartments.end(), 0.0) / 1000.0) * 3;
         // cout << "start_time = " << start_time << ", loaded = " << truck.loaded << "\n";
+
+        if (truck.owning == 1){
+            start_time += 33.0;
+        }
+        else {
+            start_time += 6.0;
+        }
+
 
         set<vector<string>> tmp = find_routes(
             initial_route, 
@@ -538,6 +550,28 @@ double roundN(double val, int n) {
     return round(val * factor) / (double)factor;
 }
 
+string roundN_str(double val, int n) {
+
+    double factor = pow(10.0, n);
+    double rounded = round(val * factor) / factor;
+
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%.*f", n, rounded);
+
+    // обрезаем нули
+    char* end = buf + strlen(buf) - 1;
+    while (end > buf && *end == '0') end--;
+    if (*end == '.') end--;        // если осталась одна точка
+    *(end + 1) = '\0';
+
+    // если целое — добавляем .0
+    if (strchr(buf, '.') == nullptr)
+        return string(buf) + ".0";
+
+    return string(buf);
+}
+
+
 
 inline void log_time(const string& message, vector<string>& time_log) {
     time_log.emplace_back(message); 
@@ -552,10 +586,11 @@ pair<double, vector<string>> compute_time_for_route(
     bool double_piped,
     const vector<Station>& input_station_list,
     const vector<vector<double>>& demanded_matrix,
-    const vector<double>& docs_fill
+    const vector<double>& docs_fill,
+    const int owned
     ){
     double pour_time = (accumulate(compartments.begin(), compartments.end(), 0.0) / 1000.0) * 3;      // время заполнения бензовоза в депо
-    
+   
     vector<int> idx {};
     for (int i = 0; i < fill.size(); i++){
         if (!fill[i].empty()) idx.push_back(i);             // индексы резервуаров, заполняемых на этом маршруте
@@ -604,28 +639,34 @@ pair<double, vector<string>> compute_time_for_route(
         }
         vector<string> time_log {};
         double time = 0;
+        if (owned == 1) {
+            time += 33.6;
+        } else {
+            time += 6;
+        }
+
 
         // заполнение документов на каждой из станций
         for (int stn_n : ordered_st) {
             time += docs_fill[stn_n];
-            log_time(to_string(docs_fill[stn_n]) + " минут - время заполнения документов на станции " + to_string(stn_n), time_log);
+            log_time(roundN_str(docs_fill[stn_n], 3) + " минут - время заполнения документов на станции " + to_string(stn_n), time_log);
         }
 
         // если только один рукав, знаем времена
         if (!double_piped){
             if (!loaded) {
-                cout << "ERROR" << endl;
+                // cout << "ERROR" << endl;
                 time += 2 * roundN(pour_time, 3);    // время на заполнение бензовоза (до рейса и во время)
-                log_time(to_string(2 * roundN(pour_time, 3)) + " минут - заполнение резервуаров одним шлангом на станциях и в депо", time_log);
+                log_time(roundN_str(2 * pour_time, 3) + " минут - заполнение резервуаров одним шлангом на станциях и в депо", time_log);
             }
             else {
                 time += roundN(pour_time, 3);    // время на заполнение бензовоза (во время рейса)
-                log_time(to_string(roundN(pour_time, 3)) + " минут - заполнение резервуаров одним шлангом на станциях", time_log);
+                log_time(roundN_str(pour_time, 3) + " минут - заполнение резервуаров одним шлангом на станциях", time_log);
             }
             
         }
         else {      // двушланговый, пытаемся быстрее разгрузить
-            cout << "ERROR" << endl;
+            // cout << "ERROR" << endl;
             for (int st : perm) {
                 if (station_comps[st].size() > 1) {   // если на станции выгружается больше одного отсека
                     vector<double> reservoir_fill_values {}; 
@@ -638,36 +679,39 @@ pair<double, vector<string>> compute_time_for_route(
                     }
                     double optimal_filling_time = roundN(two_pipes_opt(reservoir_fill_values), 3);
                     time += optimal_filling_time;
-                    log_time(to_string(optimal_filling_time) + " минут - заполнение резервуаров двумя шлангами на станции " + to_string(st), time_log);
+                    log_time(roundN_str(optimal_filling_time,3) + " минут - заполнение резервуаров двумя шлангами на станции " + to_string(st), time_log);
                 }
                 else {
                     double optimal_filling_time = roundN(compartments[int(station_comps[st][0] - '0')] / 1000.0 * 3, 3);
                        time += optimal_filling_time;
-                       log_time(to_string(optimal_filling_time) + " минут - заполнение одного резервуара одним шлангом на станции " + to_string(st), time_log);
+                       log_time(roundN_str(optimal_filling_time,3) + " минут - заполнение одного резервуара одним шлангом на станции " + to_string(st), time_log);
                 }
             }
             if (!loaded) {
                 time += roundN(pour_time, 3);
-                log_time(to_string(roundN(pour_time,3)) + "минут - заполнение резервуаров одним шлангом в депо", time_log);
+                log_time(roundN_str(pour_time,3) + "минут - заполнение резервуаров одним шлангом в депо", time_log);
             }
         }
 
         int first = perm[0];                                      // достали станцию
-        time += input_station_list[first].time_to_depot;          // доехали до нее от депо
-        log_time(to_string(roundN(input_station_list[first].time_to_depot, 3)) + " минут - время от депо до станции " + to_string(first), time_log);  
+        time += input_station_list[first].time_from_depot;          // доехали до нее от депо
+        log_time(roundN_str(input_station_list[first].time_from_depot, 3) + " минут - время от депо до станции " + to_string(first), time_log);  
 
         for (int i = 0; i + 1 < perm.size(); i++) {            // ездим между станциями
             int curr_station = perm[i];
             int next_station = perm[i + 1];
-
+            
             time += demanded_matrix[curr_station][next_station];
-            log_time(to_string(roundN(demanded_matrix[curr_station][next_station],3)) + " минут - время от станции " + to_string(curr_station) + " до станции " + to_string(next_station), time_log);
+            log_time(roundN_str(demanded_matrix[curr_station][next_station],3) + " минут - время от станции " + to_string(curr_station) + " до станции " + to_string(next_station), time_log);
         }
 
-        int last_st = perm.back();
-        time += input_station_list[last_st].time_to_depot;    // возвращаемся в депо
-        log_time(to_string(roundN(input_station_list[last_st].time_to_depot, 3)) + " минут - время от станции " + to_string(last_st) + " до депо", time_log);
-
+        
+        if (owned == 1) {
+            int last_st = perm.back();
+            time += input_station_list[last_st].time_to_depot;    // возвращаемся в депо
+            log_time(roundN_str(input_station_list[last_st].time_to_depot, 3) + " минут - время от станции " + to_string(last_st) + " до депо", time_log);
+        }
+        
         times.push_back(time);
         timelogs.emplace_back(move(time_log));      // переносим логи
     }

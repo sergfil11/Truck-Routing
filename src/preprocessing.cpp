@@ -64,7 +64,8 @@ gurobi_preprocessing(
     const map<string, vector<string>>& reservoir_to_product,
     const map<string, set<vector<string>>>& truck_to_variants,
     const vector<vector<double>>& consumption,
-    const vector<double>& starting_time
+    const vector<double>& starting_time,
+    const vector<int>& owning
   ){
 
   // значения по умолчанию
@@ -228,7 +229,7 @@ gurobi_preprocessing(
       
       // для параметров (1..R1)
       for (int r = 1; r < R1+1; r++) {
-          set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck, starting_time[idx], loading_prepared[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
+          set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck, starting_time[idx], loading_prepared[idx], owning[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
           
           // нужно проверить, можно ли эти заполнения использовать для текущего бензовоза, для этого:
           // 1. Для каждого заполнения берём номера используемых резервуаров в глобальной нумерации
@@ -265,7 +266,7 @@ gurobi_preprocessing(
             vector<double> truck_cut = truck;              // создаём копию
             truck_cut.erase(truck_cut.begin() + comp_n);   // удаляем i-ый отсек
           
-            set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck_cut, starting_time[idx], loading_prepared[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
+            set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck_cut, starting_time[idx], loading_prepared[idx], owning[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index);
             
             for (const vector<string>& filling : val) {
               vector<string> converted_filling = convert_compartments(truck_cut.size(), filling, gl_res_to_product);    // по заполнению строим схему загрузки
@@ -339,7 +340,7 @@ gurobi_preprocessing(
 
   for (int truck = 0; truck < K; ++truck) {
     if (filling_on_route.count(truck) > 0) {
-      cout << "Количество разгрузок для бензовоза " << truck << ": " << filling_on_route.at(truck).size() << endl;
+      cout << "Количество разгрузок для бензовоза " << truck + 1 << ": " << filling_on_route.at(truck).size() << endl;
     }
   }
 
@@ -356,7 +357,8 @@ gurobi_preprocessing(
                 double_piped[truck],
                 input_station_list,
                 demanded_matrix,
-                docs_fill
+                docs_fill, 
+                owning[truck]
             );
             local_sigma[truck][{truck, route}] = computed_time;
             local_timelogs[truck][{truck, route}] = timelog;
@@ -410,7 +412,7 @@ gurobi_preprocessing(
 
 
   //  возможно надо сначала создать ключи а потом добавлять
-  map<int, vector<vector<int>>> new_filling_on_route;  // для каждого бензовоза пустой список маршрутов
+  map<int, vector<vector<string>>> new_filling_on_route;  // для каждого бензовоза пустой список маршрутов
   map<pair<int,int>, double> new_sigma;
   map<pair<int,int>, vector<string>> new_log;
 
@@ -420,7 +422,7 @@ gurobi_preprocessing(
         const auto& [best_time, fill, log] = value;
 
         int new_route_idx = new_filling_on_route[truck].size();
-        new_filling_on_route[truck].push_back(pattern);              // можно и сам fill записать, но запишу паттерн
+        new_filling_on_route[truck].push_back(fill);              // запишем fill чтобы потом посчитать количество выгружаемого топлива
         new_sigma[{truck, new_route_idx}] = best_time;
         new_log[{truck, new_route_idx}] = log;
   }
