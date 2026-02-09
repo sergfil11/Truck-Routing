@@ -13,5 +13,9 @@ instances/
 
 prog.exe
 prog.pdb
+build.bat 
+manual_log.txt
+output.txt
+time_log_manual.txt
 
 *.obj
