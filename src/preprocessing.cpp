@@ -352,7 +352,7 @@ gurobi_preprocessing(
         reservoirs.push_back({{"min", st["min"][j]}, {"max", st["max"][j]}});
     }   
   }          
-  int tank_count = reservoirs.size();
+  int tank_count = reservoirs.size(); 
   
   t1 = chrono::system_clock::now(); 
   

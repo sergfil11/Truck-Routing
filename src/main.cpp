@@ -136,7 +136,7 @@ int main() {
 
     cout << "=== Начало работы Gurobi с параметрами load_number = " << load_number << ", double_race_number = " << double_race_number << " ===\n";
     auto t3 = chrono::system_clock::now();
-    auto res = gurobi_covering(
+    auto res = gurobi_covering( 
         filling_on_route,
         sigma,
         reservoirs,

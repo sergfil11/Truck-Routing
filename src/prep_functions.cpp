@@ -412,7 +412,7 @@ set<vector<string>> find_routes(
             return current_time - (p.first + stations[p.second].time_to_depot*truck.owning) < -H * 0.1;
         });
         res.erase(it, res.end());
-    }
+    } 
     
     // vector<pair<int,int>> filtered;
     // for (const auto& p : res) {

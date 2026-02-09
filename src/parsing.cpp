@@ -114,7 +114,7 @@ void print_input(const RealData& d) {
         if (d.loading_prepared[i] == true) cout << "Truck "<< i << " is prepared\n";
     }
     cout << "\n";
-
+ 
     cout << "\nOwning:\n";
     for (int i = 0; i < d.owning.size(); ++i) {
         if (d.owning[i] == 0) cout << "Truck "<< i << " is not owning\n";
