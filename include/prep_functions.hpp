@@ -79,7 +79,8 @@ set<vector<string>> all_fillings(
     int H,
     int st_in_trip = 3, 
     int top_nearest = 4,
-    map<int, int> local_index = {}
+    map<int, int> local_index = {}, 
+    bool start_shifted = false
     );
 
 set<vector<string>> find_routes(
@@ -94,7 +95,8 @@ set<vector<string>> find_routes(
     int current_time, 
     int st_in_trip, 
     int top_nearest,
-    int H
+    int H,
+    bool start_shifted
     );
 
 double two_pipes_opt(const vector<double>& fill_times);

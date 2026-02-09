@@ -266,9 +266,9 @@ vector<vector<string>> get_fillings(
     for (int i = 0; i < chosen_stations.size(); ++i){        // добавляем резервуары из станций, аналог extend
         Station st = chosen_stations[i];
 
-        int hour_number = (arrival_time[i] + truck.starting_time)/ 60; // целая часть от времени прибытия на станцию + начальный сдвиг
-        hour_number = max(hour_number, 0);                             // строго положительный
-        hour_number = min(hour_number, 11);                            // не больше 11
+        int hour_number = (arrival_time[i])/ 60;             // целая часть от времени прибытия на станцию
+        hour_number = max(hour_number, 0);                   // строго положительный
+        hour_number = min(hour_number, 11);                  // не больше 11
         // cout << "hour_number: " << hour_number;
         // cout << "arrival_time: " << arrival_time[i] << " starting_time: " << truck.starting_time << " hour_number: " << hour_number << endl;
         
@@ -337,12 +337,13 @@ set<vector<string>> find_routes(
     int current_time, 
     int st_in_trip, 
     int top_nearest,
-    int H
+    int H, 
+    bool start_shifted
     ) {
     if (current_route.size() == st_in_trip){
         set<int> route_key;
         for (const auto& station : current_route) {
-            route_key.insert(station.number);           // сохраняем изначальные номера станций в множестве
+            route_key.insert(station.number);                       // сохраняем изначальные номера станций в множестве
         }
         if (seen_routes.find(route_key) != seen_routes.end()){      // если уже есть такой маршрут
             return set<vector<string>> {};
@@ -364,8 +365,8 @@ set<vector<string>> find_routes(
         //     cout << endl;
         // }
         
-        if (fillings.empty()) return set<vector<string>> {}; // заполнения не нашлись        
-        set<vector<string>> s(fillings.begin(), fillings.end());  // возвращаем множество заполнений 
+        if (fillings.empty()) return set<vector<string>> {};        // заполнения не нашлись
+        set<vector<string>> s(fillings.begin(), fillings.end());    // возвращаем множество заполнений
         return s;
     }
     
@@ -389,16 +390,30 @@ set<vector<string>> find_routes(
         res.resize(top_nearest);
     }
 
-    current_time += last_station.docs_fill;     // увеличиваем текущее время на заполнение документов
-    current_time += 12;                         // увеличиваем текущее время на время выгрузки отсеков (хотя бы одного, размером 4000л.)
+    if (start_shifted) {
+        current_time += last_station.docs_fill;     // увеличиваем текущее время на заполнение документов
+        current_time += 12;                         // увеличиваем текущее время на время выгрузки отсеков (хотя бы одного, размером 4000л.)
+    } else {
+        current_time -= last_station.docs_fill;
+        current_time -= 12; 
+    }
 
     // 3.Обрезаем те, что не подходят по времени (берём с запасом чтобы ничего не упустить, время всё равно ещё пересчитывать)
-    auto it = find_if(res.begin(), res.end(),
-    [&](const pair<double,int>& p){
-        return current_time + p.first + stations[p.second].time_to_depot > H * 1.25;
-    });
-    res.erase(it, res.end());
-
+    if (start_shifted) {
+        auto it = find_if(res.begin(), res.end(),
+        [&](const pair<double,int>& p){
+            return current_time + p.first + stations[p.second].time_to_depot*truck.owning > H * 1.1;    // последний член прибавляется только в случае чужого бензовоза
+        });
+        res.erase(it, res.end());
+    }
+    else {
+        auto it = std::find_if(res.begin(), res.end(),
+        [&](const pair<double,int>& p){
+            return current_time - (p.first + stations[p.second].time_to_depot*truck.owning) < -H * 0.1;
+        });
+        res.erase(it, res.end());
+    }
+    
     // vector<pair<int,int>> filtered;
     // for (const auto& p : res) {
     //     int time = p.first;
@@ -421,11 +436,12 @@ set<vector<string>> find_routes(
         if (already_in_route) continue;
 
         current_route.push_back(stations[idx]);
-        
-        
-
-        new_arrival_times.push_back(current_time + time); 
-        set<vector<string>> tmp = find_routes(current_route, new_arrival_times, stations, seen_routes, truck, gl_num, local_index, time_to_station, current_time + time, st_in_trip, top_nearest, H);
+        if (start_shifted) 
+            current_time += time;
+        else 
+            current_time -= time;
+        new_arrival_times.push_back(current_time); 
+        set<vector<string>> tmp = find_routes(current_route, new_arrival_times, stations, seen_routes, truck, gl_num, local_index, time_to_station, current_time, st_in_trip, top_nearest, H, start_shifted);
         current_route.pop_back();
         new_arrival_times.pop_back();
 
@@ -461,7 +477,8 @@ set<vector<string>> all_fillings(              // TODO: сделать unordered
     int H,
     int st_in_trip, 
     int top_nearest,
-    map<int, int> local_index
+    map<int, int> local_index,
+    bool start_shifted
     ) {
     
     if (local_index.empty()) {
@@ -474,36 +491,60 @@ set<vector<string>> all_fillings(              // TODO: сделать unordered
     
     for (const Station& station : stations){
         vector<Station> initial_route = {station};  
-        double start_time = station.time_from_depot;
+        if (start_shifted) {
+            double start_time = station.time_from_depot + truck.starting_time;
 
-        if (!truck.loaded)
-            // cout <<"ERROR" << "\n";
-            start_time += (accumulate(truck.compartments.begin(), truck.compartments.end(), 0.0) / 1000.0) * 3;
-        // cout << "start_time = " << start_time << ", loaded = " << truck.loaded << "\n";
+            if (!truck.loaded)
+                // cout <<"ERROR" << "\n";
+                start_time += (accumulate(truck.compartments.begin(), truck.compartments.end(), 0.0) / 1000.0) * 3;
+            // cout << "start_time = " << start_time << ", loaded = " << truck.loaded << "\n";
 
-        if (truck.owning == 1){
-            start_time += 33.0;
+            if (truck.owning == 1){
+                start_time += 33.0;
+            }
+            else {
+                start_time += 6.0;
+            }
+
+            set<vector<string>> tmp = find_routes(
+                initial_route, 
+                {start_time},
+                stations,
+                seen_routes,
+                truck,
+                gl_num,
+                local_index,
+                time_to_station, 
+                start_time, 
+                st_in_trip, 
+                top_nearest, 
+                H,
+                start_shifted
+            );
+            final_set.insert(tmp.begin(), tmp.end());
         }
         else {
-            start_time += 6.0;
+            double start_time = H;
+            if (truck.owning == 1) {
+                start_time -= station.time_from_depot;    // возвращаемся в депо после рейса
+            }
+            set<vector<string>> tmp = find_routes(
+                initial_route, 
+                {start_time},
+                stations,
+                seen_routes,
+                truck,
+                gl_num,
+                local_index,
+                time_to_station, 
+                start_time, 
+                st_in_trip, 
+                top_nearest, 
+                H,
+                start_shifted
+            );
+            final_set.insert(tmp.begin(), tmp.end());
         }
-
-
-        set<vector<string>> tmp = find_routes(
-            initial_route, 
-            {start_time},
-            stations,
-            seen_routes,
-            truck,
-            gl_num,
-            local_index,
-            time_to_station, 
-            start_time, 
-            st_in_trip, 
-            top_nearest, 
-            H
-        );
-        final_set.insert(tmp.begin(), tmp.end());
     }
 
     return final_set;

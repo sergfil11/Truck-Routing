@@ -8,12 +8,12 @@
 
 
   struct Result {
-    std::map<int, std::vector<std::vector<string>>> filling_on_route;
-    std::map<std::pair<int,int>, double> sigma;
+    std::map<pair<bool,int>, std::vector<std::vector<string>>> filling_on_route;
+    std::map<std::tuple<bool,int,int>, double> sigma;
     std::vector<std::map<std::string,double>> reservoirs;
     int tank_count;
     std::map<std::pair<int,int>, int> gl_num;
-    std::map<std::pair<int,int>, std::vector<std::string>> log;
+    std::map<std::tuple<bool,int,int>, std::vector<std::string>> log;
     std::vector<double> H_k;
     std::vector<double> filling_times;
   };
