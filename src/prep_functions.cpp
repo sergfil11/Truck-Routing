@@ -329,7 +329,7 @@ set<vector<string>> find_routes(
     vector<Station> current_route,
     vector<double> arrival_times,  
     const vector<Station>& stations,
-    set<set<int>>& seen_routes, 
+    set<vector<int>>& seen_routes, 
     const Truck& truck,
     const map<pair<int, int>, int>& gl_num,
     const map<int,int>& local_index,
@@ -341,9 +341,10 @@ set<vector<string>> find_routes(
     bool start_shifted
     ) {
     if (current_route.size() == st_in_trip){
-        set<int> route_key;
+        vector<int> route_key;
+        route_key.reserve(current_route.size());
         for (const auto& station : current_route) {
-            route_key.insert(station.number);                       // сохраняем изначальные номера станций в множестве
+            route_key.push_back(station.number);                    // сохраняем изначальные номера станций в множестве
         }
         if (seen_routes.find(route_key) != seen_routes.end()){      // если уже есть такой маршрут
             return set<vector<string>> {};
@@ -486,7 +487,7 @@ set<vector<string>> all_fillings(              // TODO: сделать unordered
         local_index[i] = i;  // индекс в векторе
     }
 
-    set<set<int>> seen_routes {};
+    set<vector<int>> seen_routes {};
     set<vector<string>> final_set;
     
     for (const Station& station : stations){

@@ -87,7 +87,7 @@ set<vector<string>> find_routes(
     vector<Station> current_route, 
     vector<double> arrival_times, 
     const vector<Station>& stations,
-    set<set<int>>& seen_routes, 
+    set<vector<int>>& seen_routes, 
     const Truck& truck,
     const map<pair<int, int>, int>& gl_num,
     const map<int,int>& local_index,
