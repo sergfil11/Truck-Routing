@@ -10,8 +10,7 @@
 
 using namespace std;
 
-class Station {
-public:
+struct Station {
     int number;
     double time_to_depot;
     double time_from_depot;
@@ -26,24 +25,42 @@ public:
 
 };
 
-class Truck {
-public:
+struct Truck {
     int number;
     vector<double> compartments;
     int starting_time;
     bool loaded;
     int owning;
+
     Truck(int number, const vector<double>& compartments, int starting_time, bool loaded, int owning);
 };
+
+
+// vector<double> arrival_times;                // время прибытия по станциям
+struct Filling {
+    vector<pair<int, vector<int>>> res_comps;       // вектор пар (номер резервуара, номера отсеков которые его заполняют)
+    vector<double> arrival_times;                   // времена посещения станций
+    vector<int> stations_ordered;                   // порядок посещения станций
+    vector<string> timelog;                                 // человекочитаемый лог
+    double total_time;                              // время маршрута
+    bool start_shifted;
+
+    Filling(vector<pair<int, vector<int>>> res_comps, vector<double> arrival_times, vector<int> stations_ordered, vector<string> timelog = {}, double total_time = 0, bool start_shifted = true);
+};
+
+vector<int> make_pattern(const Filling& f);
 
 // Utility
 
 
 // перевод числа в битовую маску
-int bool_mask(string n, int comp_num);
+inline int bool_mask(const string& s, int comp_num);
 
 // обратный перевод маски в строку цифр
-string mask_to_digits(int mask, int comp_num);
+inline string mask_to_digits(int mask, int comp_num);
+
+// перевод строки из цифр в вектор интов
+inline vector<int> parse_digits(const string& s);
 
 // аналог itertools.combinations
 vector<vector<int>> combinations(int n, int k);
@@ -56,22 +73,24 @@ map<pair<int, int>, int> global_numeration(const vector<int>& lengths);
 
 map<int, string> global_product_mapping(const map<string, vector<string>>& reservoir_to_product);
 
-vector<string> convert_compartments(int compartments_count, const vector<string>& fill, const map<int, string>& res_to_product);
+vector<string> convert_compartments(int compartments_count, const Filling& fill, const map<int, string>& res_to_product);
 
 double roundN(double val, int n);
+
+
 
 // Main
 
 // Динамический алгоритм поиска всех вариантов выгрузки отсеков бензовоза на множестве резервуаров
-pair<vector<int>, vector<vector<vector<string>>>> dp_max_unique_digits_all_masks(const map<int, vector<string>>& possible_combinations, int comp_num);
+vector<vector<pair<int, vector<int>>>> dp_max_unique_digits_all_masks(const map<int, vector<string>>& possible_combinations, int comp_num);
 
 // Находит все допустимые комбинации отсеков между min[i] и max[i]
-vector<vector<string>> possible_filling(const vector<double>& compartments, const vector<double>& mins, const vector<double>& maxs);
+vector<vector<pair<int, vector<int>>>> possible_filling(const vector<double>& compartments, const vector<double>& mins, const vector<double>& maxs);
 
 // Возвращает заполнения для выбранного грузовика и станций
-vector<vector<string>> get_fillings(const Truck& truck, const vector<Station>& chosen_stations, const map<pair<int, int>, int>& gl_num, const vector<double>& arrival_time);
+vector<Filling> get_fillings(const Truck& truck, const vector<Station>& chosen_stations, const map<pair<int, int>, int>& gl_num, const vector<double>& arrival_time, bool start_shifted);
 
-set<vector<string>> all_fillings(
+vector<Filling> all_fillings(
     const vector<Station>& stations, 
     const Truck& truck, 
     const vector<vector<double>>& time_to_station,
@@ -83,7 +102,7 @@ set<vector<string>> all_fillings(
     bool start_shifted = false
     );
 
-set<vector<string>> find_routes(
+vector<Filling> find_routes(
     vector<Station> current_route, 
     vector<double> arrival_times, 
     const vector<Station>& stations,
@@ -92,7 +111,7 @@ set<vector<string>> find_routes(
     const map<pair<int, int>, int>& gl_num,
     const map<int,int>& local_index,
     const vector<vector<double>>& time_to_station, 
-    int current_time, 
+    double current_time, 
     int st_in_trip, 
     int top_nearest,
     int H,
@@ -107,7 +126,7 @@ pair<double, vector<string>> compute_time_for_route(
     const map<int, pair<int, int>>& reverse_index,
     const vector<double>& compartments, 
     bool loaded,
-    const vector<string>& fill,
+    const Filling& fill,
     bool double_piped,
     const vector<Station>& input_station_list,
     const vector<vector<double>>& demanded_matrix,

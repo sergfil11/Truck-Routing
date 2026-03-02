@@ -26,18 +26,15 @@ void gurobi_results(
     const map<tuple<bool,int,int>, GRBVar>& g,
     const map<int, GRBVar>& l,                                // загрузка под сменщика
     const map<int, GRBVar>& s,                                // два рейса
-    const map<pair<bool,int>, vector<vector<string>>>& filling_on_route, // грузовику -> список маршрутов -> список заполнений
+    const vector<vector<map<vector<int>, pair<double, Filling>>>>& best_by_pattern,  // маршруты
     const map<pair<int,int>, int>& gl_num,                    // (станция, резервуар) -> глобальный номер
-    const map<tuple<bool,int,int>, vector<string>>& log,            // (k,r) -> лог действий
-    const map<tuple<bool,int,int>, double>& sigma,                  // (k,r) -> время маршрута
     const vector<vector<double>> trucks,
     const vector<int>& owning,
     bool print_logs
 );
 
 unique_ptr<GurobiCoveringResult> gurobi_covering(
-    const map<pair<bool,int>, vector<vector<string>>>& filling_on_route,  // маршруты
-    const map<tuple<bool,int,int>, double>& sigma,                // время на маршрут
+    const vector<vector<map<vector<int>, pair<double, Filling>>>>& best_by_pattern,  // маршруты
     const vector<map<string, double>>& reservoirs,          // {min,max}
     int tank_count,
     int H = 720,

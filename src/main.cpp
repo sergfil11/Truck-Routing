@@ -22,7 +22,7 @@ string create_filename(bool double_piped, bool loading_prepared, double scale) {
             //  << "" << (double_piped ? "double_piped" : "") << "_"
             //  << "" << (loading_prepared ? "loading_prepared" : "") << "_"
             //  << "beta=" << fixed << setprecision(2) << scale
-             << "lalala.txt";
+             << "lalala_refactored_new.txt";
     return filename.str();
     }
 
@@ -74,7 +74,7 @@ int main() {
     cout << "Раскидали данные внутри main\n";
 
     int R1 = 3;
-    int R2 = 5;
+    int R2 = 7;
     daily_coefficient = 1.5;
     
     double_piped = vector<bool>(K, false);
@@ -105,7 +105,7 @@ int main() {
 
     auto t4 = chrono::system_clock::now();
     cout << "=== Gurobi_preprocessing началось ===\n";
-    auto [filling_on_route, sigma, reservoirs, tank_count, gl_num, log, H_k_out, filling_times] = gurobi_preprocessing(
+    auto [best_by_pattern, reservoirs, tank_count, gl_num, H_k_out, filling_times] = gurobi_preprocessing(
         N, H, K,
         time_matrix,
         depot_times,
@@ -128,17 +128,13 @@ int main() {
 
     cout << "=== Gurobi_preprocessing закончилось за " << roundN(chrono::duration<double>(chrono::system_clock::now() - t4).count(), 3) << " сек. ===\n";
 
-    
-
     int load_number = 0;            // число бензовозов, после рейса заполняющихся под сменщика
     int double_race_number = 0;     // число бензовозов, делающих по 2 рейса
-
 
     cout << "=== Начало работы Gurobi с параметрами load_number = " << load_number << ", double_race_number = " << double_race_number << " ===\n";
     auto t3 = chrono::system_clock::now();
     auto res = gurobi_covering( 
-        filling_on_route,
-        sigma,
+        best_by_pattern,
         reservoirs,
         tank_count,
         720,      // H
@@ -158,7 +154,7 @@ int main() {
 
     bool print_logs = true;
 
-    gurobi_results(*res->model, res->y, res->y1, res->y2, res->g, res->l, res->s, filling_on_route, gl_num, log, sigma, trucks, owning, print_logs);      
+    gurobi_results(*res->model, res->y, res->y1, res->y2, res->g, res->l, res->s, best_by_pattern, gl_num, trucks, owning, print_logs);      
 
     cout.rdbuf(old_buf);
 

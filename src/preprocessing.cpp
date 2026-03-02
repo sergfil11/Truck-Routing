@@ -179,13 +179,11 @@ gurobi_preprocessing(
   map<int, string> gl_res_to_product = global_product_mapping(reservoir_to_product);
   
   auto t1 = chrono::system_clock::now();  
-   
-  set<pair<int, vector<string>>> result = {};
-  set<pair<int, vector<string>>> result_shifted = {};
+  
 
- // вектор локальных результатов для каждого треда
-  vector<set<pair<int, vector<string>>>> local_results(trucks.size());
-  vector<set<pair<int, vector<string>>>> local_results_shifted(trucks.size());
+  // вектор результатов для каждого бензовоза
+  vector<vector<Filling>> routes_by_truck(trucks.size());
+  vector<vector<Filling>> routes_by_truck_shifted(trucks.size());
 
   #pragma omp parallel for schedule(static)             // лучше guided
   for (int idx = 0; idx < trucks.size(); ++idx) {
@@ -229,13 +227,10 @@ gurobi_preprocessing(
       
 
       // генерируем сначала обычные рейсы, которые начинаются с начала смены, а затем рейсы, прижатые к концу смены
-      set<pair<int, vector<string>>> local_set;
-      set<pair<int, vector<string>>> local_set_shifted;
-      
       // для параметров (1..R1)
       for (int r = 1; r < R1+1; r++) {
-          set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck, starting_time[idx], loading_prepared[idx], owning[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index, true);
-          set<vector<string>> shifted_val = all_fillings(accessible_st, Truck(idx, truck, starting_time[idx], loading_prepared[idx], owning[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index, false);
+          vector<Filling> val = all_fillings(accessible_st, Truck(idx, truck, starting_time[idx], loading_prepared[idx], owning[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index, true);
+          vector<Filling> shifted_val = all_fillings(accessible_st, Truck(idx, truck, starting_time[idx], loading_prepared[idx], owning[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index, false);
 
           // нужно проверить, можно ли эти заполнения использовать для текущего бензовоза, для этого:
           // 1. Для каждого заполнения берём номера используемых резервуаров в глобальной нумерации
@@ -246,17 +241,17 @@ gurobi_preprocessing(
           const set<vector<string>>& allowed_schemes = truck_to_variants.at(to_string(idx));
           //cout << "Количество доступных схем загрузки для бензовоза " << idx << ": " << allowed_schemes.size() << endl;
 
-          for (const vector<string>& filling : val) {
+          for (Filling& filling : val) {
               vector<string> converted_filling = convert_compartments(truck.size(), filling, gl_res_to_product);    // по заполнению строим схему загрузки
               if (allowed_schemes.find(converted_filling) != allowed_schemes.end()) {                               // если она доступна, добавляем заполнение в результат
-                  local_set.insert({idx, filling});
+                  routes_by_truck[idx].push_back(move(filling));
               }
           }
 
-          for (const vector<string>& shifted_filling : shifted_val) {
+          for (Filling& shifted_filling : shifted_val) {
               vector<string> converted_filling = convert_compartments(truck.size(), shifted_filling, gl_res_to_product);    // по заполнению строим схему загрузки
               if (allowed_schemes.find(converted_filling) != allowed_schemes.end()) {                                       // если она доступна, добавляем заполнение в результат
-                  local_set_shifted.insert({idx, shifted_filling});
+                  routes_by_truck_shifted[idx].push_back(move(shifted_filling));
               }
           }
 
@@ -265,7 +260,7 @@ gurobi_preprocessing(
           // энивей, пока что мы пропускаем не больше одного отсека (и всегда пропускаем один и тот же по номеру)
           bool empty_comp_gen = false;
           int comp_n = -1;
-          for (vector<string> scheme : allowed_schemes) {
+          for (const vector<string>& scheme : allowed_schemes) {
             for (int i = 0; i < scheme.size(); ++i) {
               if (scheme[i].empty()) {
                 empty_comp_gen = true;
@@ -280,69 +275,57 @@ gurobi_preprocessing(
             vector<double> truck_cut = truck;              // создаём копию
             truck_cut.erase(truck_cut.begin() + comp_n);   // удаляем i-ый отсек
           
-            set<vector<string>> val = all_fillings(accessible_st, Truck(idx, truck_cut, starting_time[idx], loading_prepared[idx], owning[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index, true);
-            set<vector<string>> shifted_val = all_fillings(accessible_st, Truck(idx, truck_cut, starting_time[idx], loading_prepared[idx], owning[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index, false);
+            vector<Filling> val = all_fillings(accessible_st, Truck(idx, truck_cut, starting_time[idx], loading_prepared[idx], owning[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index, true);
+            vector<Filling> shifted_val = all_fillings(accessible_st, Truck(idx, truck_cut, starting_time[idx], loading_prepared[idx], owning[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index, false);
             //TODO:
 
 
-            for (const vector<string>& filling : val) {
+            for (Filling& filling : val) {
               // по заполнению строим схему загрузки
               vector<string> converted_filling = convert_compartments(truck_cut.size(), filling, gl_res_to_product);
-
               // теперь нужно в пропущенный отсек схемы загрузки поставить '', то есть пропуск, чтобы соответствовать схеме
               converted_filling.insert(converted_filling.begin() + comp_n, "");
-              
               // если она доступна, добавляем заполнение в результат
               if (allowed_schemes.find(converted_filling) != allowed_schemes.end()) {
-                  local_set.insert({idx, filling});
+                  routes_by_truck[idx].push_back(move(filling));
               }
             }
-            for (const vector<string>& shifted_filling : shifted_val) {
+            for (Filling& shifted_filling : shifted_val) {
               vector<string> converted_filling = convert_compartments(truck_cut.size(), shifted_filling, gl_res_to_product);
               converted_filling.insert(converted_filling.begin() + comp_n, "");
               if (allowed_schemes.find(converted_filling) != allowed_schemes.end()) {
-                  local_set_shifted.insert({idx, shifted_filling});
+                  routes_by_truck_shifted[idx].push_back(move(shifted_filling));
               }
             }
 
           }
-
-          // NOTE: Версия без схем загрузки
-          // for (vector<string> elem : val){
-          //     local_set.insert({idx, elem});
-          //     // print(elem)
-          // }
-
-          // print(f'Маршрутов для бензовоза {idx}: {len(val)}')
       }
-      local_results[idx] = move(local_set);
-      local_results_shifted[idx] = move(local_set_shifted);
       // cout << "start_sh: " <<  local_results[idx].size() << " finish_sh: " << local_results_shifted[idx].size() << endl;
   }
 
-  // объединяем результаты всех нитей
-  for (const auto& s : local_results) {
-    result.insert(s.begin(), s.end());
-  }
-  for (const auto& s : local_results_shifted) {
-    result_shifted.insert(s.begin(), s.end());
-  }
 
   auto t2 = chrono::system_clock::now();
   cout << "Время вычисления маршрутов " << roundN(chrono::duration<double>(t2 - t1).count(), 3) << " сек." << endl;
-  cout << "Маршрутов, прижатых к началу смены: "  << result.size() << endl;
-  cout << "Маршрутов, прижатых к концу смены: "  << result_shifted.size() << endl;
+  size_t total_start = 0;
+  for (const auto& v : routes_by_truck) total_start += v.size();
+  size_t total_end = 0;
+  for (const auto& v : routes_by_truck_shifted) total_end += v.size();
+  cout << "Маршрутов, прижатых к началу смены: " << total_start << endl;
+  cout << "Маршрутов, прижатых к концу смены: " << total_end << endl;
 
 
 
-  // заполнение резервуаров (в глобальной нумерации) бензовозами на маршрутах
-  map<pair<bool, int>, vector<vector<string>>> filling_on_route = {};                      // (n_truck, start_shifted) : truck_fillings, start_shifted [bool] - прижатый к началу/концу смены
-  for (pair<int, vector<string>> elem : result) {                 
-    filling_on_route[pair(true, elem.first)].push_back(elem.second);
-  }
-  for (pair<int, vector<string>> elem : result_shifted) {                 
-    filling_on_route[pair(false, elem.first)].push_back(elem.second);
-  }
+  // // заполнение резервуаров (в глобальной нумерации) бензовозами на маршрутах
+  // map<pair<bool, int>, vector<vector<string>>> filling_on_route = {};                      // (n_truck, start_shifted) : truck_fillings, start_shifted [bool] - прижатый к началу/концу смены
+  // for (pair<int, vector<string>> elem : result) {                 
+  //   filling_on_route[pair(true, elem.first)].push_back(elem.second);
+  // }
+  // for (pair<int, vector<string>> elem : result_shifted) {                 
+  //   filling_on_route[pair(false, elem.first)].push_back(elem.second);
+  // }
+ 
+  // fiiling_on_route[pair(st_sh, n_truck)] = routes_by_truck[n_truck] or routes_by_truck_shifted[n_truck] if st_sh = true or false, respectively
+
 
   // перевод демандов станций в деманды резервуаров (проходимся по всем станциям и добавляем все их резервуары в список)
   vector<map<string, double>> reservoirs = {};        
@@ -360,136 +343,81 @@ gurobi_preprocessing(
   for (const pair<const pair<int, int>, int>& kv : gl_num) {
     reverse_global[kv.second] = kv.first;
   }
-  
-  map<tuple<bool,int,int>, double> sigma;
-  map<tuple<bool,int,int>, vector<string>> timelogs;
-  // локальные структуры для потоков
-  vector<map<tuple<bool,int,int>, double>> local_sigma(K);
-  vector<map<tuple<bool,int,int>, vector<string>>> local_timelogs(K);
 
   for (int truck = 0; truck < K; ++truck) {
-    if (filling_on_route.count(pair(true, truck)) > 0) {
-      cout << "Количество прижатых к старту разгрузок для бензовоза " << truck + 1 << ": " << filling_on_route.at(pair(true, truck)).size() << endl;
+    if (routes_by_truck[truck].size() > 0) {
+      cout << "Количество прижатых к старту разгрузок для бензовоза " << truck + 1 << ": " << routes_by_truck[truck].size() << endl;
     }
-    if (filling_on_route.count(pair(false, truck)) > 0) {
-      cout << "Количество прижатых к финишу разгрузок для бензовоза " << truck + 1 << ": " << filling_on_route.at(pair(false, truck)).size() << endl;
+    if (routes_by_truck_shifted[truck].size() > 0) {
+      cout << "Количество прижатых к финишу разгрузок для бензовоза " << truck + 1 << ": " << routes_by_truck_shifted[truck].size() << endl;
     }
   }
 
   for (bool start_shifted : {true, false}) {
     #pragma omp parallel for schedule(guided)
     for (int truck = 0; truck < K; ++truck) {
-      if (filling_on_route.count(pair(start_shifted, truck)) > 0) {
-          for (int route = 0; route < filling_on_route.at(pair(start_shifted, truck)).size(); ++route) {
-              const vector<string>& fill = filling_on_route.at(pair(start_shifted, truck))[route];
-              auto [computed_time, timelog] = compute_time_for_route(
-                  reverse_global,
-                  trucks[truck],
-                  loading_prepared[truck],
-                  fill,
-                  double_piped[truck],
-                  input_station_list,
-                  demanded_matrix,
-                  docs_fill, 
-                  owning[truck]
-              );
-              local_sigma[truck][{start_shifted, truck, route}] = computed_time;
-              local_timelogs[truck][{start_shifted, truck, route}] = timelog;
-          }
+      auto& routes = start_shifted ? routes_by_truck[truck] : routes_by_truck_shifted[truck];
+      for (int route = 0; route < routes.size(); ++route) {
+          Filling& fill = routes[route];
+
+          auto [computed_time, timelog] = compute_time_for_route(
+              reverse_global,
+              trucks[truck],
+              loading_prepared[truck],
+              fill,
+              double_piped[truck],
+              input_station_list,
+              demanded_matrix,
+              docs_fill, 
+              owning[truck]
+          );
+          
+          fill.timelog = timelog;
+          fill.total_time = computed_time;
       }
     }
   }
 
-  for (int truck = 0; truck < K; ++truck) {
-    sigma.insert(local_sigma[truck].begin(), local_sigma[truck].end());
-    timelogs.insert(local_timelogs[truck].begin(), local_timelogs[truck].end());
-  }
+  vector<vector<map<vector<int>, pair<double, Filling>>>> best_by_pattern(K,vector<map<vector<int>, pair<double, Filling>>>(2));
 
-
-  // локальные структуры для потоков
-  vector<map<tuple<bool, int, vector<int>>, 
-                     tuple<double, vector<string>, vector<string>>>> local_best(K);     
-  for (bool start_shifted : {true, false}) { 
+  for (bool start_shifted : {true, false}) {
     #pragma omp parallel for schedule(static)
-    for (int truck = 0; truck < K; ++truck) {                                                             
-      if (filling_on_route.count(pair(start_shifted, truck)) > 0) {
-          for (int route_idx = 0; route_idx < filling_on_route.at(pair(start_shifted, truck)).size(); ++route_idx) {
-              const vector<string>& fill = filling_on_route[pair(start_shifted, truck)][route_idx];
-              
-              vector<int> pattern = {};
-              pattern.reserve(fill.size());
-              for (int i = 0; i < fill.size(); ++i) {
-                  pattern.push_back(fill[i].empty() ? 0 : 1);
-              }
+    for (int truck = 0; truck < K; ++truck) {
 
-              double r_time = sigma[{start_shifted, truck, route_idx}];
-              vector<string> r_log = timelogs[{start_shifted, truck, route_idx}];
-              tuple<bool, int, vector<int>> key = {start_shifted, truck, pattern};
+      const vector<Filling>& routes = start_shifted
+          ? routes_by_truck[truck]
+          : routes_by_truck_shifted[truck];
 
-              auto it = local_best[truck].find(key);
-              if (it == local_best[truck].end() || r_time < get<0>(it->second))
-                  local_best[truck][key] = {r_time, fill, r_log};
+      map<vector<int>, pair<double, Filling>>& best_map = best_by_pattern[truck][start_shifted ? 1 : 0];
 
-              // if (best_by_pattern.count(key) == 0 or r_time < get<0>(best_by_pattern[key]))       // если еще нет такого паттерна, или время лучше, обновляем
-              //     best_by_pattern[key] = {r_time, fill, r_log};
-          }
+      for (int route_idx = 0; route_idx < (int)routes.size(); ++route_idx) {
+        const Filling& f = routes[route_idx];
+
+        vector<int> pattern = make_pattern(f);
+        double t = f.total_time;
+
+        auto it = best_map.find(pattern);
+        if (it == best_map.end()) {
+            best_map.emplace(std::move(pattern), std::make_pair(t, f));
+        } else if (t < it->second.first) {
+            it->second = std::make_pair(t, f);
+        }
       }
     }
   }
-  
-  // по тройке (начальная ли смена, номер бензовоза, паттерн заполнения) возвращаем маршрут с минимальным временем, соответствующий этому паттерну (его время, заполнение и лог)
-  map<tuple<bool, int, vector<int>>, tuple<double, vector<string>, vector<string>>> best_by_pattern = {};   
-  
-  for (const auto& lb : local_best) {
-    best_by_pattern.insert(lb.begin(), lb.end());
+
+  size_t total_best = 0;
+  for (int k = 0; k < (int)best_by_pattern.size(); ++k) {
+      for (int sh = 0; sh < (int)best_by_pattern[k].size(); ++sh) {
+          total_best += best_by_pattern[k][sh].size();
+      }
   }
-
-  cout << "Лучших по паттерну маршрутов:"  << best_by_pattern.size() << endl;
-
-
-  //  возможно надо сначала создать ключи а потом добавлять
-  map<pair<bool,int>, vector<vector<string>>> new_filling_on_route;    // для каждого бензовоза пустой список маршрутов
-  map<tuple<bool,int,int>, double> new_sigma;
-  map<tuple<bool,int,int>, vector<string>> new_log;
-
-  // перезаписываем сигму
-  for (const auto& [key, value] : best_by_pattern) {
-        const auto& [shift, truck, pattern] = key;
-        const auto& [best_time, fill, log] = value;
-
-        int new_route_idx = new_filling_on_route[pair(shift, truck)].size();
-        new_filling_on_route[pair(shift, truck)].push_back(fill);            // запишем fill чтобы потом посчитать количество выгружаемого топлива
-        new_sigma[{shift, truck, new_route_idx}] = best_time;
-        new_log[{shift, truck, new_route_idx}] = log;
-  }
-
-  int total_routes = 0;
-  for (auto& [_, routes] : new_filling_on_route)
-      total_routes += routes.size();
-
-//   cout << "Маршрутов:" << total_routes << endl;
-//   cout << "Сигм:" << new_sigma.size() << endl;
-//   cout << "Лог:" << new_log.size() << endl;
-
-  auto t5 = chrono::system_clock::now();
-{
-    std::map<pair<bool,int>, vector<vector<string>>>().swap(filling_on_route);
-    std::map<tuple<bool,int,int>, double>().swap(sigma);
-    std::map<tuple<bool,int,int>, vector<string>>().swap(timelogs);
-}
-
-  // map<int, vector<vector<string>>>().swap(filling_on_route);
-  // map<pair<int,int>, double>().swap(sigma);
-  // map<pair<int,int>, int>().swap(gl_num);
-  // map<pair<int,int>, vector<string>>().swap(timelogs);
-
-  auto t6 = chrono::system_clock::now();
-  cout << "Время очистки:" << roundN(chrono::duration<double>(t6 - t5).count(), 3) << " сек." << endl;
+  cout << "Лучших по паттерну маршрутов: " << total_best << endl;
 
 
   t2 = chrono::system_clock::now();
   cout << "Время вычисления длительностей:" << roundN(chrono::duration<double>(t2 - t1).count(), 3) << " сек." << endl;
 
 
-  return {move(new_filling_on_route), move(new_sigma), move(reservoirs), tank_count, move(gl_num), move(new_log), move(H_k), move(filling_times)};
+  return {move(best_by_pattern), move(reservoirs), tank_count, move(gl_num), move(H_k), move(filling_times)};
 }

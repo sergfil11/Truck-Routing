@@ -15,9 +15,8 @@ using namespace std;
 // };
 
 unique_ptr<GurobiCoveringResult> gurobi_covering(
-    const map<pair<bool,int>, vector<vector<string>>>& filling_on_route, // маршруты
-    const map<tuple<bool,int,int>, double>& sigma,                      // время на маршрут
-    const vector<map<string, double>>& reservoirs,                      // {min,max}
+    const vector<vector<map<vector<int>, pair<double, Filling>>>>& best_by_pattern, // маршруты
+    const vector<map<string, double>>& reservoirs,                                 // {min,max}
     int tank_count,
     int H,
     int K,
@@ -30,6 +29,28 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
     int double_race_number,
     const vector<double>& filling_times
 ) {
+
+    // patterns[k][sh][r] = vector<int> pattern
+    // times[k][sh][r]    = double time
+    vector<vector<vector<vector<int>>>> patterns(K, vector<vector<vector<int>>>(2));
+    vector<vector<vector<double>>> times(K, vector<vector<double>>(2));
+
+    for (int k = 0; k < K; ++k) {
+        for (int sh = 0; sh < 2; ++sh) {
+            for (const auto& kv : best_by_pattern[k][sh]) {
+                patterns[k][sh].push_back(kv.first);        // pattern
+                times[k][sh].push_back(kv.second.first);    // time (лучшее)
+            }
+        }
+    }
+
+    size_t total_best_in = 0;
+    for (int k = 0; k < K; ++k)
+        for (int sh = 0; sh < 2; ++sh)
+            total_best_in += best_by_pattern[k][sh].size();
+
+    cerr << "best_by_pattern keys IN covering: " << total_best_in << "\n";
+
     auto env = make_unique<GRBEnv>(true);
     env->set(GRB_IntParam_OutputFlag, 0);
     env->start();
@@ -54,27 +75,20 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
         }
     }
 
-    // for (int k = 0; k < K; ++k) {
-    //    cout << owning[k] << " ";
-    // }
-    
     // b[(shift,tank,k,r)]
     
     map<tuple<bool,int,int,int>, int> b;
+
     for (bool start_shifted : {true, false}) {
+        int sh = start_shifted ? 1 : 0;
         for (int k = 0; k < K; ++k) {
-            if (filling_on_route.count(pair(start_shifted, k)) == 0) continue;
-            const auto& routes = filling_on_route.at(pair(start_shifted, k));
-            
-            // for (int r = 0; r < (int)routes.size(); ++r) {
-            //     if (routes[r].size() != tank_count){
-            //         cout << "OH NO RETARD ALERT CLASS" << endl;
-            //     }
-            // }
-            
-            for (int r = 0; r < (int)routes.size(); ++r) {
+            for (int r = 0; r < (int)patterns[k][sh].size(); ++r) {
+
+                const vector<int>& pat = patterns[k][sh][r];
+
                 for (int tank = 0; tank < tank_count; ++tank) {
-                    b[make_tuple(start_shifted,tank,k,r)] = (!routes[r][tank].empty() ? 1 : 0);
+                    int val = (find(pat.begin(), pat.end(), tank) != pat.end()) ? 1 : 0;
+                    b[make_tuple(start_shifted, tank, k, r)] = val;
                 }
             }
         }
@@ -86,19 +100,17 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
     }
 
     // Переменные g[k,r]
-    // for (bool start_shifted : {true, false}) {
-        for (const auto& [shift_and_k, routes] : filling_on_route) {
-            bool shift = shift_and_k.first;
-            int k = shift_and_k.second;
-            for (int r = 0; r < (int)routes.size(); ++r) {
-                string var_name = "g_" + to_string(shift) + "_" + to_string(k) + "_" + to_string(r);
-                result->g[{shift,k,r}] = result->model->addVar(0.0, 1.0, 0.0, GRB_BINARY, var_name);
+    for (bool start_shifted : {true, false}) {
+        int sh = start_shifted ? 1 : 0;
+
+        for (int k = 0; k < K; ++k) {
+            int R = (int)patterns[k][sh].size();
+            for (int r = 0; r < R; ++r) {
+            std::string var_name = "g_" + std::to_string(start_shifted) + "_" + std::to_string(k) + "_" + std::to_string(r);
+            result->g[{start_shifted, k, r}] = result->model->addVar(0.0, 1.0, 0.0, GRB_BINARY, var_name);
             }
         }
-    // }
-
-
-
+    }
 
     // Целевая функция
     GRBLinExpr obj = 0;
@@ -108,24 +120,24 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
 
     // Ограничения (4.2)–(4.5)
     for (int i = 0; i < tank_count; ++i) {
-        GRBLinExpr lhs = 0;
-        for (bool start_shifted : {true, false}) {
-            for (int k = 0; k < K; ++k) {
-                auto it = filling_on_route.find({start_shifted, k});
-                if (it == filling_on_route.end()) continue;
+    GRBLinExpr lhs = 0;
 
-                const auto& routes = it->second;
-                for (int r = 0; r < (int)routes.size(); ++r) {
-                    lhs += b[{start_shifted, i, k, r}] * result->g[{start_shifted, k, r}];
-                }
+    for (bool start_shifted : {true, false}) {
+        int sh = start_shifted ? 1 : 0;
+
+        for (int k = 0; k < K; ++k) {
+            int R = (int)patterns[k][sh].size();
+            for (int r = 0; r < R; ++r) {
+                lhs += b[{start_shifted, i, k, r}] * result->g[{start_shifted, k, r}];
             }
         }
+    }
 
-        if (is_critical[i] == 1.0) {
-            result->model->addConstr(lhs == 1, "Reservoir_" + to_string(i));
-        } else {
-            result->model->addConstr(lhs <= 1, "Reservoir_" + to_string(i));
-        }
+    if (is_critical[i] == 1) {
+        result->model->addConstr(lhs == 1, "Reservoir_" + std::to_string(i));
+    } else {
+        result->model->addConstr(lhs <= 1, "Reservoir_" + std::to_string(i));
+    }
     }
     
 
@@ -158,65 +170,68 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
       result->y2[k] = result->model->addVar(0.0, 1.0, 0.0, GRB_BINARY, "y2_"+to_string(k));
     }
 
-    for (bool start_shifted : {true, false}) {
-        for (int k = 0; k < K; ++k) {
-            if (filling_on_route.count(pair(start_shifted, k)) == 0) continue;
-            const auto& routes = filling_on_route.at(pair(start_shifted, k));
+    for (int k = 0; k < K; ++k) {
 
-            if (start_shifted == true) {
-                GRBLinExpr rhs = 0;
-                for (int r = 0; r < (int)routes.size(); ++r) {
-                    rhs += result->g[{start_shifted,k,r}];
-                }
-                result->model->addConstr(rhs <= result->y2[k], "Link_" + to_string(k) + "_y2");
+        {
+            bool start_shifted = false;
+            int sh = 0;
+            GRBLinExpr rhs = 0;
+            for (int r = 0; r < (int)patterns[k][sh].size(); ++r) {
+                rhs += result->g[{start_shifted, k, r}];
             }
-            else {
-                GRBLinExpr rhs = 0;
-                for (int r = 0; r < (int)routes.size(); ++r) {
-                    rhs += result->g[{start_shifted,k,r}];
-                }
-                result->model->addConstr(rhs <= result->y1[k], "Link_" + to_string(k) + "_y1");
+            result->model->addConstr(rhs <= result->y1[k], "Link_" + to_string(k) + "_y1");
+        }
+
+        {
+            bool start_shifted = true;
+            int sh = 1;
+            GRBLinExpr rhs = 0;
+            for (int r = 0; r < (int)patterns[k][sh].size(); ++r) {
+                rhs += result->g[{start_shifted, k, r}];
             }
+            result->model->addConstr(rhs <= result->y2[k], "Link_" + to_string(k) + "_y2");
         }
     }
 
     for (int k = 0; k < K; ++k) {
         result->model->addConstr(2 * result->y[k] >= result->y1[k] + result->y2[k], "Shifts_link_" + to_string(k));
     }
- 
 
     if (!H_k.empty()) {
-        if (load_number > 0) {                  // если некоторое число бензовозов хотим загрузить под сменщика
-             // создаём переменные
-            for (int k = 0; k < K; ++k) {      
-              result->l[k] = result->model->addVar(0.0, 1.0, 0.0, GRB_BINARY, "l_"+to_string(k));
-            }
-            // вычитаем время загрузки под сменщика
-            for (bool start_shifted : {true, false}) {
-                for (int k = 0; k < K; ++k) {       
-                    if (filling_on_route.count(pair(start_shifted, k)) == 0) continue;
-                    GRBLinExpr lhs = 0;
-                    const auto& routes = filling_on_route.at(pair(start_shifted, k));
-                    for (int r = 0; r < (int)routes.size(); ++r) lhs += sigma.at({start_shifted,k,r}) * result->g[{start_shifted,k,r}];
-                    result->model->addConstr(lhs <= (H_k[k] - result->l[k] * filling_times[k]), "Shift_" + to_string(k));
-                }
-            }
-            // проверяем, что загрузок необходимое число
-            GRBLinExpr lhs = 0;
-            for (int k = 0; k < K; ++k) lhs += result->l[k];
-            result->model->addConstr(lhs >= load_number, "load_number satisfied");
-            // загружаем под сменщика только используемые бензовозы
+        if (load_number > 0) {
             for (int k = 0; k < K; ++k) {
-              result->model->addConstr(result->y[k] >= result->l[k], "load_if_used" + to_string(k));
+                result->l[k] = result->model->addVar(0.0, 1.0, 0.0, GRB_BINARY, "l_" + to_string(k));
+            }
+            
+           
+            
+            for (int k = 0; k < K; ++k) {
+                GRBLinExpr lhs = 0;
+                for (bool start_shifted : {true, false}) {
+                    int sh = start_shifted ? 1 : 0;
+                    for (int r = 0; r < (int)patterns[k][sh].size(); ++r) {
+                        lhs += times[k][sh][r] * result->g[{start_shifted, k, r}];
+                    }
+                }
+                result->model->addConstr(lhs <= (H_k[k] - result->l[k] * filling_times[k]), "Shift_" + to_string(k));
+            }
+
+            GRBLinExpr loads_sum = 0;
+            for (int k = 0; k < K; ++k) loads_sum += result->l[k];
+            result->model->addConstr(loads_sum >= load_number, "load_number_satisfied");
+
+            for (int k = 0; k < K; ++k) {
+                result->model->addConstr(result->y[k] >= result->l[k], "load_if_used_" + to_string(k));
             }
         }
         else {
             for (int k = 0; k < K; ++k) {
                 GRBLinExpr lhs = 0;
                 for (bool start_shifted : {true, false}) {
-                    if (filling_on_route.count(pair(start_shifted, k)) == 0) continue;
-                    const auto& routes = filling_on_route.at(pair(start_shifted, k));
-                    for (int r = 0; r < (int)routes.size(); ++r) lhs += sigma.at({start_shifted,k,r}) * result->g[{start_shifted,k,r}];
+                    int sh = start_shifted ? 1 : 0;
+                    for (int r = 0; r < (int)patterns[k][sh].size(); ++r) {
+                        lhs += times[k][sh][r] * result->g[{start_shifted, k, r}];
+                    }
                 }
                 result->model->addConstr(lhs <= H_k[k], "Shift_" + to_string(k));
             }
@@ -224,24 +239,23 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
     }
 
 
-
     if (double_race_number > 0) {
         GRBLinExpr all_races_sum = 0;
+
         for (bool start_shifted : {true, false}) {
+            int sh = start_shifted ? 1 : 0;
+
             for (int k = 0; k < K; ++k) {
-                if (filling_on_route.count(pair(start_shifted, k)) == 0) continue;
-                for (int r = 0; r < (int)filling_on_route.at(pair(start_shifted, k)).size(); ++r) {
-                    all_races_sum += result->g[{start_shifted,k,r}];
+                for (int r = 0; r < (int)patterns[k][sh].size(); ++r) {
+                    all_races_sum += result->g[{start_shifted, k, r}];
                 }
             }
         }
 
         GRBLinExpr used_trucks_sum = 0;
-        for (int k = 0; k < K; ++k) {
-            used_trucks_sum += result->y[k];
-        }
-        
-        result->model->addConstr(all_races_sum >= used_trucks_sum + double_race_number, "double_races"); 
+        for (int k = 0; k < K; ++k) used_trucks_sum += result->y[k];
+
+        result->model->addConstr(all_races_sum >= used_trucks_sum + double_race_number, "double_races");
     }
 
     result->model->optimize();
@@ -294,15 +308,28 @@ void gurobi_results(
     const map<tuple<bool,int,int>, GRBVar>& g,
     const map<int, GRBVar>& l,
     const map<int, GRBVar>& s,
-    const map<pair<bool,int>, vector<vector<string>>>& filling_on_route,   // грузовику -> список маршрутов -> список заполнений
+    const vector<vector<map<vector<int>, pair<double, Filling>>>>& best_by_pattern,
     const map<pair<int,int>, int>& gl_num,                      // (станция, резервуар) -> глобальный номер
-    const map<tuple<bool,int,int>, vector<string>>& log,              // (k,r) -> лог действий
-    const map<tuple<bool,int,int>, double>& sigma,                    // (k,r) -> время маршрута
     const vector<vector<double>> trucks,
     const vector<int>& owning,
     bool print_logs
 ) {
     int status = model.get(GRB_IntAttr_Status);
+
+    int K = trucks.size();
+    vector<vector<vector<const Filling*>>> routes(K, vector<vector<const Filling*>>(2));
+    vector<vector<vector<double>>> times(K, vector<vector<double>>(2));
+    vector<vector<vector<vector<int>>>> patterns(K, vector<vector<vector<int>>>(2));
+
+    for (int k = 0; k < K; ++k) {
+        for (int sh = 0; sh < 2; ++sh) {
+            for (const auto& kv : best_by_pattern[k][sh]) {
+            patterns[k][sh].push_back(kv.first);
+            times[k][sh].push_back(kv.second.first);
+            routes[k][sh].push_back(&kv.second.second);
+            }
+        }
+    }
 
     map<int, int> station_mapping = {
         {0, 30005},
@@ -385,130 +412,143 @@ void gurobi_results(
         cout << "Время решения: " << runtime << " секунд" << endl;
         cout << "Количество узлов в дереве поиска: " << nodeCount << "\n" << endl;
 
-        // reverse gl_num
-        map<int, pair<int,int>> reversed_gl;
-        for (const auto& [key, val] : gl_num) {
-            reversed_gl[val] = key;
+        // reverse gl_num: global_tank_id -> (station_idx, local_res_idx)
+        std::map<int, std::pair<int,int>> reversed_gl;
+        for (const auto& kv : gl_num) {
+            reversed_gl[kv.second] = kv.first;
         }
 
-        
+        // Распаковка best_by_pattern в списки, чтобы r был индексом как в модели
+        // routes_ptr[k][sh][r] -> Filling*
+        // times[k][sh][r]      -> double
+        std::vector<std::vector<std::vector<const Filling*>>> routes_ptr(
+            K, std::vector<std::vector<const Filling*>>(2)
+        );
+        std::vector<std::vector<std::vector<double>>> times(
+            K, std::vector<std::vector<double>>(2)
+        );
 
-        // перебираем грузовики
-        if (print_logs == true) {
-            // for (bool start_shifted : {true, false}) {
-            for (const auto& [shift_and_k, routes] : filling_on_route) {
-                bool shift = shift_and_k.first;
-                int k = shift_and_k.second;
-                if (y.at(k).get(GRB_DoubleAttr_X) > 0.5) {
-                    if (s.count(k) && s.at(k).get(GRB_DoubleAttr_X) > 0.5) cout << "Бензовоз " << (k+1) << " выполняет два рейса\n";
-                    if (l.count(k) && l.at(k).get(GRB_DoubleAttr_X) > 0.5) cout << "Бензовоз " << (k+1) << " загружен под сменщика\n";
-                    if (shift == 0 and y1.at(k).get(GRB_DoubleAttr_X) > 0.5) cout << "Бензовоз " << (k+1) << " используется, в подсмену 1, выбранные маршруты:" << endl;
-                    if (shift == 1 and y2.at(k).get(GRB_DoubleAttr_X) > 0.5) cout << "Бензовоз " << (k+1) << " используется, в подсмену 2, выбранные маршруты:" << endl;
-                    double total_time = 0.0;
-                    
-                    if (shift == 0 and y1.at(k).get(GRB_DoubleAttr_X) > 0.5) {
-                         if (owning[k] == 1) {
-                            total_time += 33.6;
-                            cout << "  Время поездки до депо 33.6 минут" << endl;
-                        } else {
-                            total_time += 6.0;
-                            cout << "  Время поездки до депо 6.0 минут" << endl;
-                        }
-                    }
+        for (int k = 0; k < K; ++k) {
+            for (int sh = 0; sh < 2; ++sh) {
+                routes_ptr[k][sh].reserve(best_by_pattern[k][sh].size());
+                times[k][sh].reserve(best_by_pattern[k][sh].size());
 
-                    if (shift == 1 and y2.at(k).get(GRB_DoubleAttr_X) > 0.5) {
-                         if (owning[k] == 1) {
-                            total_time += 33.6;
-                            cout << "  Время поездки до депо 33.6 минут" << endl;
-                        } else {
-                            total_time += 6.0;
-                            cout << "  Время поездки до депо 6.0 минут" << endl;
-                        }
-                    }
-
-                    for (int r = 0; r < (int)routes.size(); ++r) {
-                        if (g.at({shift,k,r}).get(GRB_DoubleAttr_X) > 0.5) {
-                            cout << "\n  Маршрут №" << r << endl; 
-                            
-                            vector<string> comps_distr = {}; 
-                            for (int res_idx = 0; res_idx < (int)routes[r].size(); ++res_idx) {
-                                if (!routes[r][res_idx].empty()) {
-                                    // cout << "    Выливаем отсеки с номерами: " << routes[r][res_idx] << endl;
-                                    comps_distr.push_back(routes[r][res_idx]);
-                                }
-                            }
-                            
-                            // все резервуары на маршруте
-                            vector<int> temp_res;
-                            for (int res_idx = 0; res_idx < (int)routes[r].size(); ++res_idx) {
-                                 if (!routes[r][res_idx].empty()) {
-                                    temp_res.push_back(res_idx);
-                                }
-                            }
-
-                            // станции в маршруте
-                            vector<int> st_in_route;
-                            vector<pair<int,int>> res_in_local;
-                            for (int elem : temp_res) {
-                                auto key = reversed_gl[elem]; // (station, reservoir)
-                                st_in_route.push_back(key.first);
-                                res_in_local.push_back(key);
-                            }
-
-                            // сортировка и уникализация станций
-                            sort(st_in_route.begin(), st_in_route.end());
-                            st_in_route.erase(unique(st_in_route.begin(), st_in_route.end()), st_in_route.end());
-
-                            // сортировка резервуаров
-                            sort(res_in_local.begin(), res_in_local.end());
-
-                            int cmps_idx = 0;
-                            for (int s : st_in_route) {
-                                vector<int> res_in_local_curr;
-                                for (auto& elem : res_in_local) {
-                                    if (elem.first == s) {
-                                        res_in_local_curr.push_back(elem.second);
-                                    }
-                                }
-                                cout << "    Станция №" << station_mapping[s] << endl;
-                                cout << "       Заполнены резервуары:" << endl;
-                                for (size_t idx = 0; idx < res_in_local_curr.size(); ++idx) {
-                                    vector<int> res_map = res_nmbrs[s];
-                                    cout << "         №" << res_map[res_in_local_curr[idx]] << " используя отсек(и): ";
-                                    bool first = true;
-                                    for (char ch : comps_distr[cmps_idx]) {
-                                        if (!first) {
-                                            cout << ", ";
-                                        }
-                                        cout << ch;
-                                        first = false;
-                                    }
-                                    int fuel_sum = 0;
-                                    for (char ch : comps_distr[cmps_idx]) {
-                                        if (ch >= '0' && ch <= '9') {
-                                            fuel_sum += trucks[k][ch - '0'];
-                                        }
-                                    }
-                                    cout << " и выгружая " << fuel_sum << " литров топлива";
-                                    cmps_idx += 1;
-                                    cout << endl;
-                                }
-                            }
-
-                            double route_time = roundN(sigma.at({shift,k,r}), 3);
-                            cout << endl;
-                            cout << "  Время маршрута - " << fixed << setprecision(2) << route_time << " минут, в том числе:" << endl;
-                            total_time += route_time;
-
-                            for (const auto& entry : log.at({shift,k,r})) {
-                                cout << "    " << replaceStations(entry, station_mapping) << endl;
-                            }
-                        }
-                    }
-                    // cout << "  Суммарное время: " << fixed << setprecision(2) << total_time << " минут" << endl;
-                    cout << endl;
+                for (const auto& kv : best_by_pattern[k][sh]) {
+                    // kv.first  = pattern (vector<int>)
+                    // kv.second = pair<double, Filling>
+                    times[k][sh].push_back(kv.second.first);
+                    routes_ptr[k][sh].push_back(&kv.second.second);
                 }
-                
+            }
+        }
+
+        // Перебираем грузовики/смены/маршруты и печатаем выбранные
+        if (print_logs) {
+            for (int k = 0; k < K; ++k) {
+
+                if (y.at(k).get(GRB_DoubleAttr_X) <= 0.5) continue;
+
+                if (s.count(k) && s.at(k).get(GRB_DoubleAttr_X) > 0.5)
+                    std::cout << "Бензовоз " << (k + 1) << " выполняет два рейса\n";
+
+                if (l.count(k) && l.at(k).get(GRB_DoubleAttr_X) > 0.5)
+                    std::cout << "Бензовоз " << (k + 1) << " загружен под сменщика\n";
+
+                for (bool shift : {false, true}) {
+                    int sh = shift ? 1 : 0;
+
+                    if (!shift && y1.at(k).get(GRB_DoubleAttr_X) <= 0.5) continue;
+                    if ( shift && y2.at(k).get(GRB_DoubleAttr_X) <= 0.5) continue;
+
+                    if (!shift) std::cout << "Бензовоз " << (k + 1) << " используется, в подсмену 1, выбранные маршруты:\n";
+                    else        std::cout << "Бензовоз " << (k + 1) << " используется, в подсмену 2, выбранные маршруты:\n";
+
+                    double total_time = 0.0;
+
+                    // Время поездки до депо (как у тебя было)
+                    if (owning[k] == 1) {
+                        total_time += 33.6;
+                        std::cout << "  Время поездки до депо 33.6 минут\n";
+                    } else {
+                        total_time += 6.0;
+                        std::cout << "  Время поездки до депо 6.0 минут\n";
+                    }
+
+                    for (int r = 0; r < (int)routes_ptr[k][sh].size(); ++r) {
+                        if (g.at({shift, k, r}).get(GRB_DoubleAttr_X) <= 0.5) continue;
+
+                        const Filling& f = *routes_ptr[k][sh][r];
+
+                        std::cout << "\n  Маршрут №" << r << "\n";
+
+                        // Сгруппируем выгрузки по станциям:
+                        // st -> list of (local_res_idx, comps_vector)
+                        std::map<int, std::vector<std::pair<int, std::vector<int>>>> by_station;
+
+                        for (const auto& rc : f.res_comps) {
+                            int tank_id = rc.first;
+                            const std::vector<int>& comps = rc.second;
+
+                            auto it = reversed_gl.find(tank_id);
+                            if (it == reversed_gl.end()) continue; // или можно assert/throw
+
+                            int st = it->second.first;
+                            int local_res = it->second.second;
+
+                            by_station[st].push_back({local_res, comps});
+                        }
+
+                        for (auto& kv : by_station) {
+                            int st = kv.first;
+                            auto& lst = kv.second;
+
+                            std::sort(lst.begin(), lst.end(),
+                                    [](const auto& a, const auto& b) { return a.first < b.first; });
+
+                            std::cout << "    Станция №" << station_mapping[st] << "\n";
+                            std::cout << "       Заполнены резервуары:\n";
+
+                            for (const auto& item : lst) {
+                                int local_res = item.first;
+                                const std::vector<int>& comps = item.second;
+
+                                const std::vector<int>& res_map = res_nmbrs[st];
+
+                                std::cout << "         №" << res_map[local_res] << " используя отсек(и): ";
+
+                                for (int i = 0; i < (int)comps.size(); ++i) {
+                                    if (i) std::cout << ", ";
+                                    std::cout << comps[i];
+                                }
+
+                                int fuel_sum = 0;
+                                for (int comp_number : comps) {
+                                    fuel_sum += (int)trucks[k][comp_number];
+                                }
+
+                                std::cout << " и выгружая " << fuel_sum << " литров топлива\n";
+                            }
+                        }
+
+                        double route_time = roundN(times[k][sh][r], 3);
+                        std::cout << "\n  Время маршрута - " << std::fixed << std::setprecision(2)
+                                << route_time << " минут\n";
+                        total_time += route_time;
+
+                        // ЛОГИ:
+                        // Если у тебя в Filling есть vector<string> timelog_lines — раскомментируй и подставь имя поля.
+                        //
+                        std::cout << "  В том числе:\n";
+                        for (const auto& entry : f.timelog) {
+                            std::cout << "    " << replaceStations(entry, station_mapping) << "\n";
+                        }
+
+                        // Если лог хранится одной строкой f.timelog (string) — можно так:
+                        // if (!f.timelog.empty()) std::cout << f.timelog << "\n";
+                    }
+
+                    std::cout << "\n";
+                }
             }
         }
     } else {
