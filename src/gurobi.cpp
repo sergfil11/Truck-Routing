@@ -27,11 +27,13 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
     const vector<int>& is_critical,
     int load_number,
     int double_race_number,
-    const vector<double>& filling_times
+    const vector<double>& filling_times,
+    bool is_relaxation
 ) {
 
+    char vtype = is_relaxation ? GRB_CONTINUOUS : GRB_BINARY;
     // patterns[k][sh][r] = vector<int> pattern
-    // times[k][sh][r]    = double time
+    // times[k][sh][r] = double time
     vector<vector<vector<vector<int>>>> patterns(K, vector<vector<vector<int>>>(2));
     vector<vector<vector<double>>> times(K, vector<vector<double>>(2));
 
@@ -43,13 +45,6 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
             }
         }
     }
-
-    size_t total_best_in = 0;
-    for (int k = 0; k < K; ++k)
-        for (int sh = 0; sh < 2; ++sh)
-            total_best_in += best_by_pattern[k][sh].size();
-
-    cerr << "best_by_pattern keys IN covering: " << total_best_in << "\n";
 
     auto env = make_unique<GRBEnv>(true);
     env->set(GRB_IntParam_OutputFlag, 0);
@@ -96,7 +91,7 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
 
     // Переменные y[k]
     for (int k = 0; k < K; ++k) {
-      result->y[k] = result->model->addVar(0.0, 1.0, 0.0, GRB_BINARY, "y_"+to_string(k));
+      result->y[k] = result->model->addVar(0.0, 1.0, 0.0, vtype, "y_"+to_string(k));
     }
 
     // Переменные g[k,r]
@@ -107,7 +102,7 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
             int R = (int)patterns[k][sh].size();
             for (int r = 0; r < R; ++r) {
             std::string var_name = "g_" + std::to_string(start_shifted) + "_" + std::to_string(k) + "_" + std::to_string(r);
-            result->g[{start_shifted, k, r}] = result->model->addVar(0.0, 1.0, 0.0, GRB_BINARY, var_name);
+            result->g[{start_shifted, k, r}] = result->model->addVar(0.0, 1.0, 0.0, vtype, var_name);
             }
         }
     }
@@ -139,35 +134,12 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
         result->model->addConstr(lhs <= 1, "Reservoir_" + std::to_string(i));
     }
     }
-    
 
-    // // связь b и g
-    // for (bool start_shifted : {true, false}) {
-    //     for (int i = 0; i < tank_count; ++i) {
-    //         if (is_critical[i] == 1.0) {
-    //             GRBLinExpr lhs = 0;
-    //             for (int k = 0; k < K; ++k) {
-    //                 if (filling_on_route.count(pair(start_shifted, k)) == 0) continue;
-    //                 const auto& routes = filling_on_route.at(pair(start_shifted, k));
-    //                 for (int r = 0; r < (int)routes.size(); ++r) lhs += b[{start_shifted,i,k,r}] * result->g[{start_shifted,k,r}];
-    //             }
-    //             result->model->addConstr(lhs == 1, "Reservoir_" + to_string(i));
-    //         } else {
-    //             GRBLinExpr lhs = 0;
-    //             for (int k = 0; k < K; ++k) {
-    //                 if (filling_on_route.count(pair(start_shifted, k)) == 0) continue;
-    //                 const auto& routes = filling_on_route.at(pair(start_shifted, k));
-    //                 for (int r = 0; r < (int)routes.size(); ++r) lhs += b[{start_shifted,i,k,r}] * result->g[{start_shifted,k,r}];
-    //             }
-    //             result->model->addConstr(lhs <= 1, "Reservoir_" + to_string(i));
-    //         }
-    //     }
-    // }
 
     // переменные y1, y2 и связь с y
     for (int k = 0; k < K; ++k) {
-      result->y1[k] = result->model->addVar(0.0, 1.0, 0.0, GRB_BINARY, "y1_"+to_string(k));
-      result->y2[k] = result->model->addVar(0.0, 1.0, 0.0, GRB_BINARY, "y2_"+to_string(k));
+      result->y1[k] = result->model->addVar(0.0, 1.0, 0.0, vtype, "y1_"+to_string(k));
+      result->y2[k] = result->model->addVar(0.0, 1.0, 0.0, vtype, "y2_"+to_string(k));
     }
 
     for (int k = 0; k < K; ++k) {
@@ -200,7 +172,7 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
     if (!H_k.empty()) {
         if (load_number > 0) {
             for (int k = 0; k < K; ++k) {
-                result->l[k] = result->model->addVar(0.0, 1.0, 0.0, GRB_BINARY, "l_" + to_string(k));
+                result->l[k] = result->model->addVar(0.0, 1.0, 0.0, vtype, "l_" + to_string(k));
             }
             
            
@@ -475,7 +447,7 @@ void gurobi_results(
                     }
 
                     for (int r = 0; r < (int)routes_ptr[k][sh].size(); ++r) {
-                        if (g.at({shift, k, r}).get(GRB_DoubleAttr_X) <= 0.5) continue;
+                        if (g.count({shift, k, r}) && g.at({shift, k, r}).get(GRB_DoubleAttr_X) <= 0.5) continue;
 
                         const Filling& f = *routes_ptr[k][sh][r];
 

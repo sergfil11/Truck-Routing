@@ -46,5 +46,6 @@ unique_ptr<GurobiCoveringResult> gurobi_covering(
     const vector<int>& is_critical = {},
     int load_number = 0,
     int double_race_number = 0,
-     const vector<double>& filling_times = {}
+    const vector<double>& filling_times = {},
+    bool is_relaxation = false
 );

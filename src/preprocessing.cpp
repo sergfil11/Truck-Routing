@@ -398,9 +398,9 @@ gurobi_preprocessing(
 
         auto it = best_map.find(pattern);
         if (it == best_map.end()) {
-            best_map.emplace(std::move(pattern), std::make_pair(t, f));
+            best_map.emplace(move(pattern), make_pair(t, f));
         } else if (t < it->second.first) {
-            it->second = std::make_pair(t, f);
+            it->second = make_pair(t, f);
         }
       }
     }
