@@ -18,11 +18,11 @@ using namespace std;
 
 string create_filename(bool double_piped, bool loading_prepared, double scale) {
     stringstream filename;
-    filename << "configs/"
+    filename << "configs_new/"
             //  << "" << (double_piped ? "double_piped" : "") << "_"
             //  << "" << (loading_prepared ? "loading_prepared" : "") << "_"
             //  << "beta=" << fixed << setprecision(2) << scale
-             << "lalala_refactored_new.txt";
+             << "main_new.txt";
     return filename.str();
     }
 
