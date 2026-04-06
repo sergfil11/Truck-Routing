@@ -9,6 +9,7 @@ instances/
 configs/
 configs_0.4/
 configs_full_trucks/
+configs_new/
 .vscode/
 
 prog.exe

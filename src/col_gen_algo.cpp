@@ -41,6 +41,10 @@ vector<vector<map<vector<int>, pair<double, Filling>>>> initial_routes (
         vector<RouteEntry> routes;
 
         for (const auto& [pattern, data] : best_by_pattern[k][sh]) {
+            if (k >= best_by_pattern.size() || sh >= best_by_pattern[k].size()) {
+                cerr << "WARNING: best_by_pattern[" << k << "][" << sh << "] отсутствует\n";
+                continue;
+            }
             routes.push_back({pattern, data.first, data.second});
         }
 
@@ -91,7 +95,10 @@ vector<vector<map<vector<int>, pair<double, Filling>>>> initial_routes (
       filling_times,
       is_relaxation
     );
-
+    if (!res || !res->model) {
+        cerr << "ERROR: gurobi_covering вернул nullptr или модель недоступна\n";
+        break;
+    }
     GRBModel& g_model = *res->model;
     if (g_model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
       solved = true;
