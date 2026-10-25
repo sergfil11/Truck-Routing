@@ -6,7 +6,16 @@
 #include <set>
 #include <unordered_set>
 #include <unordered_map>
-#include <intrin.h>  // для MSVC
+
+// Portable equivalent of __popcnt for the existing compartment bit masks.
+inline int count_set_bits(unsigned int value) {
+    int count = 0;
+    while (value != 0) {
+        value &= value - 1;
+        ++count;
+    }
+    return count;
+}
 
 using namespace std;
 

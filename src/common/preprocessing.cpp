@@ -3,7 +3,6 @@
 #include <numeric>
 #include <iostream>
 #include <chrono>
-#include <omp.h>
 
 
 /**

@@ -1,6 +1,5 @@
 #include "prep_functions.hpp"
 #include <iostream>
-#include <format>
 #include <sstream>
 #include <algorithm>
 #include <numeric>
@@ -131,7 +130,7 @@ vector<vector<pair<int, vector<int>>>> dp_max_unique_digits_all_masks(
     // находим максимальное число использованных битов
     int max_bits = 0;
     for (const auto& [mask, _] : dp) {
-        int bits = __popcnt(mask);      // считаем число битиков - это и есть число использованных отсеков
+        int bits = count_set_bits(static_cast<unsigned int>(mask)); // число использованных отсеков
         if (bits > max_bits) max_bits = bits;     // и если что, обновляем максимум
     }
 
@@ -143,7 +142,7 @@ vector<vector<pair<int, vector<int>>>> dp_max_unique_digits_all_masks(
 
 
     for (const auto& [mask, selections] : dp) {
-        if (__popcnt(mask) == max_bits) {
+        if (count_set_bits(static_cast<unsigned int>(mask)) == max_bits) {
             best_masks.push_back(mask);
             best_selections.push_back(move(selections));
         }

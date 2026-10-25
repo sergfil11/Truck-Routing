@@ -21,3 +21,25 @@ output.txt
 time_log_manual.txt
 
 *.obj
+
+# Local project context for Codex
+/AGENTS.md
+/docs/project-map.md
+
+# Local notes (the existing project README remains versioned)
+*.md
+!/README.md
+
+# Inputs, generated output and local build configuration
+/data/
+/outputs/*
+!/outputs/.gitkeep
+/build/
+/CMakeUserPresets.json
+*.lic
+*.log
+*.pdb
+.DS_Store
+
+# Preserve the historical binary already present in the repository
+!/archive/bin/col_gen.exe

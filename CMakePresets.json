@@ -1,0 +1,28 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "gurobi",
+      "displayName": "Gurobi: full pool and column generation",
+      "binaryDir": "${sourceDir}/build/gurobi",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "TRUCK_ROUTING_SOLVER": "gurobi"
+      }
+    },
+    {
+      "name": "cpsat",
+      "displayName": "CP-SAT scaffold: shared core only",
+      "binaryDir": "${sourceDir}/build/cpsat",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "TRUCK_ROUTING_SOLVER": "cpsat"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "gurobi", "configurePreset": "gurobi", "configuration": "Release" },
+    { "name": "cpsat", "configurePreset": "cpsat", "configuration": "Release" }
+  ]
+}

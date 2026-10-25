@@ -1,3 +1,121 @@
+# Сборка и структура проекта
+
+Проект разделён на общее ядро и варианты решателя. Существующая реализация
+Gurobi сохранена, включая отдельную программу с генерацией столбцов.
+**Вариант CP-SAT пока собирает только общее ядро: модель CP-SAT ещё не перенесена,
+исполняемой программы оптимизации для него пока нет.**
+
+```text
+apps/gurobi/        main.cpp и col_gen_main.cpp — две точки входа
+apps/cpsat/         место для будущей точки входа CP-SAT
+src/common/        парсер, генерация маршрутов, ДП и расчёт времени
+src/gurobi/        модель Gurobi и отбор столбцов через LP
+src/cpsat/         место для будущей модели CP-SAT
+include/common/    общие заголовки и обработка путей запуска
+include/gurobi/    интерфейсы существующего решателя
+include/cpsat/     место для будущих интерфейсов CP-SAT
+third_party/       json.hpp и сохранённые старые заголовки Gurobi
+cmake/             отдельные конфигурации gurobi.cmake и cpsat.cmake
+scripts/           отдельные команды сборки для Windows и macOS/Linux
+data/              входные JSON, копируются вручную и не попадают в Git
+outputs/           новые результаты запусков, не попадают в Git
+build/gurobi/      сборка Gurobi, не попадает в Git
+build/cpsat/       независимая сборка общего ядра для будущего CP-SAT
+archive/           исторические логи, прежний col_gen.exe и push-test.txt
+docs/              локальные пояснения; Markdown-заметки игнорируются Git
+```
+
+Нужны CMake 3.21+ и компилятор C++17. OpenMP подключается, если доступен;
+иначе подготовка маршрутов работает последовательно. На Windows рекомендуется
+запускать команды из Developer Command Prompt установленной Visual Studio
+с компонентами C++. Сборка ориентирована на Release и динамический MSVC runtime
+(`/MD`). JSON и лицензии в репозиторий добавлять не нужно.
+
+## Gurobi на компьютере с установленным SDK
+
+В Windows (CMD), подставив путь к своей установке:
+
+```bat
+set "GUROBI_HOME=C:\gurobi1203\win64"
+set "PATH=%GUROBI_HOME%\bin;%PATH%"
+scripts\build_gurobi.bat
+```
+
+На macOS/Linux:
+
+```sh
+export GUROBI_HOME=/path/to/gurobi/platform
+sh scripts/build_gurobi.sh
+```
+
+Путь `GUROBI_HOME` должен содержать папки `include` и `lib`. Сборка использует
+заголовки и библиотеки установленного SDK; копии в `third_party/gurobi_headers`
+сохранены для истории и не входят в include-пути CMake. Для Windows по умолчанию
+ищется C++-обёртка `gurobi_c++md2017`; если установлена другая совместимая
+обёртка, её можно указать явно:
+
+```bat
+scripts\build_gurobi.bat -DGUROBI_CXX_LIBRARY_RELEASE="C:/path/to/wrapper.lib"
+```
+
+Лицензия нужна для работы оптимизатора. Её настройка остаётся локальной на
+компьютере с Gurobi. Принципы подключения SDK:
+[официальная инструкция Gurobi для CMake](https://support.gurobi.com/hc/en-us/articles/360039499751-How-do-I-use-CMake-to-build-Gurobi-C-C-projects).
+
+## Подготовительная сборка CP-SAT
+
+```bat
+scripts\build_cpsat.bat
+```
+
+Или на macOS/Linux:
+
+```sh
+sh scripts/build_cpsat.sh
+```
+
+Сейчас получается статическая библиотека `truck_routing_core` без Gurobi
+и без OR-Tools. При конфигурации выводится явное сообщение, что это только
+каркас. Подключение OR-Tools и реализация оптимизатора — следующий этап.
+
+Оба скрипта можно заменить прямыми командами из корня проекта:
+
+```sh
+cmake --preset gurobi
+cmake --build --preset gurobi --parallel
+# Или независимый вариант:
+cmake --preset cpsat
+cmake --build --preset cpsat --parallel
+```
+
+Локальные настройки конкретного компьютера можно хранить в игнорируемом
+`CMakeUserPresets.json`. Разделение настроек описано в
+[документации CMake Presets](https://cmake.org/cmake/help/v3.21/manual/cmake-presets.7.html).
+
+## Данные и запуск
+
+После клонирования создать папку `data/` и положить туда исходные JSON.
+Вся папка, включая `.gitkeep`, игнорируется Git. Запускать из корня проекта; тогда без аргументов
+используется `data/16_depot.json`. Можно передать другой файл и путь отчёта:
+
+```bat
+build\gurobi\bin\Release\truck_routing_gurobi.exe data\16_depot.json outputs\gurobi\main.txt
+build\gurobi\bin\Release\truck_routing_gurobi_colgen.exe data\16_depot.json outputs\gurobi\col_gen.txt
+```
+
+На macOS/Linux пути используют `/`, имена программ — без `.exe`.
+Аргумент `--help` показывает формат запуска. Поддерживается и старый формат
+имени JSON без расширения. При отсутствии входа программа завершится с ошибкой;
+папки отчёта создаются автоматически. Указанный файл отчёта перезаписывается.
+
+Расчётные параметры сохранены: `R1=3`, `R2=7`, коэффициент времени 1.5,
+смена 720 минут, отключённые предварительная загрузка и два шланга,
+`load_number=0`, `double_race_number=0`. Они по-прежнему заданы в точках входа,
+а не вынесены в новый конфигурационный формат.
+
+Содержимое `archive/` — прежние результаты, не результаты новых сборок.
+Математическая модель и эвристики при разделении папок не менялись.
+
 # Постановка задачи
 Алгоритм решает задачу маршрутизации бензовозов с несколькими отсеками на одну рабочую смену (Multi-Compartment Vehicle Routing Problem).
 

@@ -1,4 +1,5 @@
-#pragma once
+#include <filesystem>
+#include <stdexcept>
 #include <fstream>
 #include <iostream>
 #include "json.hpp"
@@ -11,13 +12,14 @@ using namespace std;
 
 
 RealData load_real_data(const string& name) {
-    string full_path = name + ".json";
+    filesystem::path input_path(name);
+    if (input_path.extension() != ".json") input_path += ".json";
+    string full_path = input_path.string();
     cout << "Trying to open file: " << full_path << endl;
 
     ifstream f(full_path);
     if (!f.is_open()) {
-        cerr << "Cannot open file!" << endl;
-        return {};
+        throw runtime_error("Cannot open input file: " + full_path);
     }
     else {
         cout << "File opened successfully!" << endl;
