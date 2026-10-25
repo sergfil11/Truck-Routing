@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <cstdio>
 #include <cstring>
+#include <stdexcept>
 
 using namespace std;
 
@@ -254,15 +255,25 @@ map<pair<int, int>, int> global_numeration(const vector<int>& lengths){
 
 
 // "разворачивает" карту из вида station_n: vector<product_name> в reservoir_global_n: product_name
-map<int, string> global_product_mapping(const map<string, vector<string>>& reservoir_to_product) {
+map<int, string> global_product_mapping(
+    const map<string, vector<string>>& reservoir_to_product,
+    const vector<int>& demanded_idx, const vector<int>& lengths) {
+    if (demanded_idx.size() != lengths.size())
+        throw invalid_argument("Product mapping: station IDs and tank counts differ in size");
     map<int, string> global_mapping;
     int global_index = 0;
-    
-    for (const auto& [reservoir, products] : reservoir_to_product) {
-        for (const auto& product : products) {
-            global_mapping[global_index] = product;
-            global_index++;
-        }
+
+    // Follow the numeric, filtered station order used by global_numeration.
+    // Iterating map<string,...> would place station "10" before station "2".
+    for (size_t i = 0; i < demanded_idx.size(); ++i) {
+        const string station = to_string(demanded_idx[i]);
+        const auto entry = reservoir_to_product.find(station);
+        if (entry == reservoir_to_product.end())
+            throw invalid_argument("Product mapping: missing station " + station);
+        if (lengths[i] < 0 || entry->second.size() != static_cast<size_t>(lengths[i]))
+            throw invalid_argument("Product mapping: tank count mismatch at station " + station);
+        for (const auto& product : entry->second)
+            global_mapping.emplace(global_index++, product);
     }
     
     return global_mapping;

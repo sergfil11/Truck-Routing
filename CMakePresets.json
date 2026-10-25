@@ -13,7 +13,7 @@
     },
     {
       "name": "cpsat",
-      "displayName": "CP-SAT scaffold: shared core only",
+      "displayName": "CP-SAT: full route pool, integer minutes",
       "binaryDir": "${sourceDir}/build/cpsat",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",

@@ -175,7 +175,7 @@ gurobi_preprocessing(
   map<pair<int, int>, int> gl_num = global_numeration(lengths);
 
   // глобальная нумерация видов топлива в резервуарах
-  map<int, string> gl_res_to_product = global_product_mapping(reservoir_to_product);
+  map<int, string> gl_res_to_product = global_product_mapping(reservoir_to_product, demanded_idx, lengths);
   
   auto t1 = chrono::system_clock::now();  
   

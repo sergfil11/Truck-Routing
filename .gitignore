@@ -24,7 +24,7 @@ time_log_manual.txt
 
 # Local project context for Codex
 /AGENTS.md
-/docs/project-map.md
+/.codex-context/
 
 # Local notes (the existing project README remains versioned)
 *.md

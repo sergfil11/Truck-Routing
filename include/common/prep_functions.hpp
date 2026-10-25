@@ -80,7 +80,10 @@ set<vector<int>> boolify_reservoirs(const vector<vector<string>>& fillings);
 // переводит номер станции и резервуара в глобальный номер резервуара
 map<pair<int, int>, int> global_numeration(const vector<int>& lengths);
 
-map<int, string> global_product_mapping(const map<string, vector<string>>& reservoir_to_product);
+// Original station IDs and tank counts in the same filtered order as gl_num.
+map<int, string> global_product_mapping(
+    const map<string, vector<string>>& reservoir_to_product,
+    const vector<int>& demanded_idx, const vector<int>& lengths);
 
 vector<string> convert_compartments(int compartments_count, const Filling& fill, const map<int, string>& res_to_product);
 
