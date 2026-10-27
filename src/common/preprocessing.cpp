@@ -59,7 +59,7 @@ gurobi_preprocessing(
     vector<double>& docs_fill,
     vector<double>& H_k,
     vector<bool>& loading_prepared,
-    vector<vector<vector<double>>>& consumption_percent,
+    const vector<vector<vector<double>>>& consumption_percent,
     const map<string, vector<string>>& reservoir_to_product,
     const map<string, set<vector<string>>>& truck_to_variants,
     const vector<vector<double>>& consumption,
@@ -80,20 +80,23 @@ gurobi_preprocessing(
       loading_prepared = vector<bool> (K, false);
   
 
+  // Preserve the input hourly fractions for subsequent preprocessing calls.
+  auto cumulative_consumption = consumption_percent;
+
   // абсолютные значения потребления
   for (int st_idx = 0; st_idx < N; ++st_idx) {
-    for (int res_idx = 0; res_idx < consumption_percent[st_idx].size(); ++res_idx) {
-      for (int var_idx = 0; var_idx < consumption_percent[st_idx][res_idx].size(); ++var_idx) {
-        consumption_percent[st_idx][res_idx][var_idx] *= consumption[st_idx][res_idx];
+    for (int res_idx = 0; res_idx < cumulative_consumption[st_idx].size(); ++res_idx) {
+      for (int var_idx = 0; var_idx < cumulative_consumption[st_idx][res_idx].size(); ++var_idx) {
+        cumulative_consumption[st_idx][res_idx][var_idx] *= consumption[st_idx][res_idx];
       }
     }
   }
 
   // кумулятивные абсолютные значения потребления
   for (int st_idx = 0; st_idx < N; ++st_idx) {
-    for (int res_idx = 0; res_idx < consumption_percent[st_idx].size(); ++res_idx) {
-      for (int var_idx = 1; var_idx < consumption_percent[st_idx][res_idx].size(); ++var_idx) {
-        consumption_percent[st_idx][res_idx][var_idx] += consumption_percent[st_idx][res_idx][var_idx - 1];
+    for (int res_idx = 0; res_idx < cumulative_consumption[st_idx].size(); ++res_idx) {
+      for (int var_idx = 1; var_idx < cumulative_consumption[st_idx][res_idx].size(); ++var_idx) {
+        cumulative_consumption[st_idx][res_idx][var_idx] += cumulative_consumption[st_idx][res_idx][var_idx - 1];
       }
     }
   }
@@ -147,7 +150,7 @@ gurobi_preprocessing(
       cut_access.push_back(access[idx]);
       demanded_st.push_back(stations[idx]);
       demanded_depot_times.push_back(depot_times[idx]);
-      demanded_consumptions.push_back(consumption_percent[idx]);
+      demanded_consumptions.push_back(cumulative_consumption[idx]);
       demanded_docs_fill.push_back(docs_fill[idx]);
   }
 
@@ -276,8 +279,15 @@ gurobi_preprocessing(
           
             vector<Filling> val = all_fillings(accessible_st, Truck(idx, truck_cut, starting_time[idx], loading_prepared[idx], owning[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index, true);
             vector<Filling> shifted_val = all_fillings(accessible_st, Truck(idx, truck_cut, starting_time[idx], loading_prepared[idx], owning[idx]), accessible_matrix, gl_num, H_k[idx], r, R2, local_index, false);
-            //TODO:
-
+            // Fillings use truck_cut indices during generation and scheme checks.
+            // Restore original truck indices only after a scheme is accepted.
+            const auto restore_compartment_indices = [comp_n](Filling& filling) {
+              for (auto& [reservoir, compartments] : filling.res_comps) {
+                for (int& compartment : compartments) {
+                  if (compartment >= comp_n) ++compartment;
+                }
+              }
+            };
 
             for (Filling& filling : val) {
               // по заполнению строим схему загрузки
@@ -286,6 +296,7 @@ gurobi_preprocessing(
               converted_filling.insert(converted_filling.begin() + comp_n, "");
               // если она доступна, добавляем заполнение в результат
               if (allowed_schemes.find(converted_filling) != allowed_schemes.end()) {
+                  restore_compartment_indices(filling);
                   routes_by_truck[idx].push_back(move(filling));
               }
             }
@@ -293,6 +304,7 @@ gurobi_preprocessing(
               vector<string> converted_filling = convert_compartments(truck_cut.size(), shifted_filling, gl_res_to_product);
               converted_filling.insert(converted_filling.begin() + comp_n, "");
               if (allowed_schemes.find(converted_filling) != allowed_schemes.end()) {
+                  restore_compartment_indices(shifted_filling);
                   routes_by_truck_shifted[idx].push_back(move(shifted_filling));
               }
             }
@@ -367,7 +379,7 @@ gurobi_preprocessing(
               double_piped[truck],
               input_station_list,
               demanded_matrix,
-              docs_fill, 
+              demanded_docs_fill,
               owning[truck]
           );
           

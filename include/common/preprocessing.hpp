@@ -46,7 +46,7 @@ gurobi_preprocessing(
     vector<double>& docs_fill,
     vector<double>& H_k,
     vector<bool>& loading_prepared,
-    vector<vector<vector<double>>>& consumption_percent,
+    const vector<vector<vector<double>>>& consumption_percent,
     const map<string, vector<string>>& reservoir_to_product = {},
     const map<string, set<vector<string>>>& truck_to_variants = {},
     const vector<vector<double>>& consumption = {},

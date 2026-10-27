@@ -698,7 +698,20 @@ pair<double, vector<string>> compute_time_for_route(
     const vector<double>& docs_fill,
     const int owned
     ){
-    double pour_time = (accumulate(compartments.begin(), compartments.end(), 0.0) / 1000.0) * 3;      // время заполнения бензовоза в депо
+    // Filling uses original truck indices. Only assigned compartments carry fuel.
+    double loaded_volume = 0;
+    vector<bool> used(compartments.size(), false);
+    for (const auto& [res_id, comps] : fill.res_comps) {
+        for (int comp : comps) {
+            if (comp < 0 || static_cast<size_t>(comp) >= compartments.size())
+                throw invalid_argument("Invalid compartment index in route duration");
+            if (used[comp])
+                throw invalid_argument("Compartment assigned more than once in route duration");
+            used[comp] = true;
+            loaded_volume += compartments[comp];
+        }
+    }
+    const double loading_time = roundN(loaded_volume / 1000.0 * 3, 3);
    
     // находим номера резервуаров, заполняемых на этом маршруте
     // vector<int> idx {};
@@ -749,17 +762,16 @@ pair<double, vector<string>> compute_time_for_route(
         log_time(roundN_str(docs_fill[stn_n], 3) + " минут - время заполнения документов на станции " + to_string(stn_n), time_log);
     }
 
-    // если только один рукав, знаем времена
+    if (!loaded) {
+        time += loading_time;
+        log_time(roundN_str(loading_time, 3) + " минут - загрузка бензовоза в депо", time_log);
+    }
+
+    // One hose unloads all assigned fuel sequentially; two hoses use tank jobs below.
     if (!double_piped){
-        if (!loaded) {
-            time += 2 * roundN(pour_time, 3);    // время на заполнение бензовоза (до рейса и во время)
-            log_time(roundN_str(2 * pour_time, 3) + " минут - заполнение резервуаров одним шлангом на станциях и в депо", time_log);
-        }
-        else {
-            time += roundN(pour_time, 3);    // время на заполнение бензовоза (во время рейса)
-            log_time(roundN_str(pour_time, 3) + " минут - заполнение резервуаров одним шлангом на станциях", time_log);
-        }
-        
+        const double unloading_time = roundN(loaded_volume / 1000.0 * 3, 3);
+        time += unloading_time;
+        log_time(roundN_str(unloading_time, 3) + " минут - заполнение резервуаров одним шлангом на станциях", time_log);
     }
     else {      // двушланговый, пытаемся быстрее разгрузить
         for (int st : perm) {
@@ -798,10 +810,6 @@ pair<double, vector<string>> compute_time_for_route(
                 time += optimal_filling_time;
                 log_time(roundN_str(optimal_filling_time,3) + " минут - заполнение одного резервуара одним шлангом на станции " + to_string(st), time_log);
             }
-        }
-        if (!loaded) {
-            time += roundN(pour_time, 3);
-            log_time(roundN_str(pour_time,3) + "минут - заполнение резервуаров одним шлангом в депо", time_log);
         }
     }
 
